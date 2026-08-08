@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Qoder Cloud Agents documentation
+    url: https://qoder.com/cloud/quickstart
+    about: Read product documentation before reporting an account or service problem.
+  - name: Security vulnerability
+    url: https://github.com/QoderAI/cloud-agents-cookbook/security/advisories/new
+    about: Report a sensitive repository vulnerability privately.

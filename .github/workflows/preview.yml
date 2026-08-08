@@ -1,0 +1,57 @@
+name: Preview content
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Check out trusted tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: trusted
+          persist-credentials: false
+      - name: Check out submission as data
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          path: submission
+          persist-credentials: false
+      - name: Use Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: trusted/package-lock.json
+      - name: Install trusted dependencies
+        working-directory: trusted
+        run: npm ci --ignore-scripts
+      - name: Build static preview
+        run: node trusted/scripts/build-preview.mjs --root submission --contract-root trusted --out-dir artifacts/preview
+      - name: Upload preview artifact
+        id: preview-artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cookbook-preview-${{ github.event.pull_request.number }}
+          path: artifacts/preview
+          retention-days: 3
+          if-no-files-found: error
+      - name: Add preview to job summary
+        env:
+          ARTIFACT_URL: ${{ steps.preview-artifact.outputs.artifact-url }}
+        run: |
+          printf '## Cookbook preview\n\nDownload the trusted static preview artifact: [%s](%s)\n' "cookbook-preview-${{ github.event.pull_request.number }}" "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"

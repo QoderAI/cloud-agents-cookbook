@@ -4,6 +4,7 @@
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 import { validateRepository } from './validate.mjs';
 import { copyArticleAssets, manifestForDirectory, normalizeItem, writeJson } from './lib/catalog.mjs';
 
@@ -32,7 +33,13 @@ export async function buildCatalog(root = process.cwd(), options = {}) {
 }
 
 async function runCli() {
-  const result = await buildCatalog();
+  const { values } = parseArgs({ options: { root: { type: 'string', default: process.cwd() }, 'contract-root': { type: 'string' }, 'out-dir': { type: 'string' }, 'source-commit': { type: 'string' } } });
+  const root = path.resolve(values.root);
+  const result = await buildCatalog(root, {
+    contractRoot: path.resolve(values['contract-root'] ?? root),
+    ...(values['out-dir'] ? { outDir: path.resolve(values['out-dir']) } : {}),
+    ...(values['source-commit'] ? { sourceCommit: values['source-commit'] } : {})
+  });
   console.log(`Built ${result.catalog.items.length} content item(s) in ${result.outDir}.`);
 }
 

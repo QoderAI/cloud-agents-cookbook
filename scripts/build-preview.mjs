@@ -4,6 +4,7 @@
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 import MarkdownIt from 'markdown-it';
 import footnote from 'markdown-it-footnote';
 import taskLists from 'markdown-it-task-lists';
@@ -64,7 +65,12 @@ export async function buildPreview(root = process.cwd(), options = {}) {
 }
 
 async function runCli() {
-  const result = await buildPreview();
+  const { values } = parseArgs({ options: { root: { type: 'string', default: process.cwd() }, 'contract-root': { type: 'string' }, 'out-dir': { type: 'string' } } });
+  const root = path.resolve(values.root);
+  const result = await buildPreview(root, {
+    contractRoot: path.resolve(values['contract-root'] ?? root),
+    ...(values['out-dir'] ? { outDir: path.resolve(values['out-dir']) } : {})
+  });
   console.log(`Built preview for ${result.itemCount} content item(s) in ${result.outDir}.`);
 }
 

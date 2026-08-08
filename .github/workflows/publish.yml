@@ -1,0 +1,63 @@
+name: Publish content bundle
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-main
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Use Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Verify and build immutable content
+        run: npm run check
+      - name: Package content bundle
+        run: tar -czf cookbook-content.tgz dist
+      - name: Upload content bundle
+        id: content-artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cookbook-content-${{ github.sha }}
+          path: cookbook-content.tgz
+          retention-days: 30
+          if-no-files-found: error
+      - name: Verify publication configuration
+        if: vars.COOKBOOK_PUBLISH_ENABLED == 'true'
+        env:
+          PUBLISH_WEBHOOK: ${{ secrets.COOKBOOK_PUBLISH_WEBHOOK }}
+          PUBLISH_TOKEN: ${{ secrets.COOKBOOK_PUBLISH_TOKEN }}
+        run: test -n "$PUBLISH_WEBHOOK" && test -n "$PUBLISH_TOKEN"
+      - name: Dispatch publication
+        if: vars.COOKBOOK_PUBLISH_ENABLED == 'true'
+        env:
+          PUBLISH_WEBHOOK: ${{ secrets.COOKBOOK_PUBLISH_WEBHOOK }}
+          PUBLISH_TOKEN: ${{ secrets.COOKBOOK_PUBLISH_TOKEN }}
+          ARTIFACT_ID: ${{ steps.content-artifact.outputs.artifact-id }}
+        run: >-
+          curl --fail-with-body --retry 2
+          -H "Authorization: Bearer $PUBLISH_TOKEN"
+          -H "Content-Type: application/json"
+          --data "{\"schema_version\":1,\"repository\":\"$GITHUB_REPOSITORY\",\"source_commit\":\"$GITHUB_SHA\",\"run_id\":\"$GITHUB_RUN_ID\",\"artifact_id\":\"$ARTIFACT_ID\",\"idempotency_key\":\"$GITHUB_REPOSITORY:$GITHUB_SHA\"}"
+          "$PUBLISH_WEBHOOK"
+      - name: Record disabled publication integration
+        if: vars.COOKBOOK_PUBLISH_ENABLED != 'true'
+        run: printf 'Content bundle built successfully. Production dispatch is disabled until the website integration is configured.\n' >> "$GITHUB_STEP_SUMMARY"

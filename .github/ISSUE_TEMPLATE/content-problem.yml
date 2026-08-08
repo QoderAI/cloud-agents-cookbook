@@ -1,0 +1,31 @@
+name: Published content problem
+description: Report an accuracy, rendering, accessibility, or maintenance problem.
+title: "[Content problem] "
+labels: ["content-problem"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Cookbook page or repository path
+      placeholder: https://qoder.com/cloud/cookbook/...
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Problem type
+      options: [Accuracy, Rendering, Accessibility, Broken link or asset, Outdated content, Licensing, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details and expected correction
+      description: Do not include secrets, customer data, private logs, or personal information.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Public evidence
+      description: Provide public documentation or a reproducible example when applicable.

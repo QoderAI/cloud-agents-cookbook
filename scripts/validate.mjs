@@ -4,6 +4,7 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 import matter from 'gray-matter';
 import { JSDOM } from 'jsdom';
 import { loadContracts, schemaMessages } from './lib/contracts.mjs';
@@ -197,7 +198,10 @@ export async function validateRepository(root = process.cwd(), options = {}) {
 }
 
 async function runCli() {
-  const result = await validateRepository(process.cwd());
+  const { values } = parseArgs({ options: { root: { type: 'string', default: process.cwd() }, 'contract-root': { type: 'string' } } });
+  const root = path.resolve(values.root);
+  const contractRoot = path.resolve(values['contract-root'] ?? root);
+  const result = await validateRepository(root, { contractRoot });
   for (const item of result.errors) console.error(formatDiagnostic('error', item));
   for (const item of result.warnings) console.warn(formatDiagnostic('warning', item));
   console.log(`Checked ${result.items.length} content item(s): ${result.errors.length} error(s), ${result.warnings.length} warning(s).`);

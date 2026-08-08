@@ -1,0 +1,40 @@
+name: Content proposal
+description: Propose a Cookbook topic before writing a pull request.
+title: "[Proposal] "
+labels: ["content-proposal"]
+body:
+  - type: dropdown
+    id: type
+    attributes:
+      label: Content type
+      options: [Recipe, Best Practice, Showcase, Workshop]
+    validations:
+      required: true
+  - type: dropdown
+    id: locale
+    attributes:
+      label: Locale
+      options: [zh-CN, en-US]
+    validations:
+      required: true
+  - type: textarea
+    id: audience
+    attributes:
+      label: Audience and problem
+      description: Who needs this and what task or decision will it help with?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Public sources and evidence
+      description: Link public product documentation, reproducible evidence, or authorized source material.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public scope
+      options:
+        - label: The proposal contains no customer data, credentials, internal links, or unreleased capabilities.
+          required: true
