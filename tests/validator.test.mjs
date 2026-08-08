@@ -68,7 +68,8 @@ test('rejects an unsupported or unsafe Mermaid diagram', async () => {
 });
 
 test('rejects common secret patterns and private addresses', async () => {
-  const result = await validateMutation((source) => `${source}\n\nUse \`sk-abcdefghijklmnopqrstuvwxyz123456\` at https://localhost:8080.\n`);
+  const fakeSecret = ['sk', 'abcdefghijklmnopqrstuvwxyz123456'].join('-');
+  const result = await validateMutation((source) => `${source}\n\nUse \`${fakeSecret}\` at https://localhost:8080.\n`);
   assert.ok(rules(result).has('SAFE-001'));
   assert.ok(rules(result).has('LINK-005'));
 });
