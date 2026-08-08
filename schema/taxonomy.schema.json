@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qoder.com/schemas/cookbook/taxonomy.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "categories", "tags"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "categories": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/category" }
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 100,
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
+    }
+  },
+  "$defs": {
+    "category": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "labels"],
+      "properties": {
+        "id": { "enum": ["quick-start", "build-deploy", "enterprise-integration", "operations-governance", "evaluation-reliability"] },
+        "labels": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zh-CN", "en-US"],
+          "properties": {
+            "zh-CN": { "type": "string", "minLength": 1 },
+            "en-US": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qoder.com/schemas/cookbook/content-types.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "types"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "types": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recipe", "best-practice", "showcase", "workshop"],
+      "properties": {
+        "recipe": { "$ref": "#/$defs/type" },
+        "best-practice": { "$ref": "#/$defs/type" },
+        "showcase": { "$ref": "#/$defs/type" },
+        "workshop": { "$ref": "#/$defs/type" }
+      }
+    }
+  },
+  "$defs": {
+    "type": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directory", "labels", "required_sections"],
+      "properties": {
+        "directory": { "type": "string", "pattern": "^[a-z-]+$" },
+        "labels": { "$ref": "#/$defs/localizedLabels" },
+        "required_sections": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zh-CN", "en-US"],
+          "properties": {
+            "zh-CN": { "$ref": "#/$defs/sections" },
+            "en-US": { "$ref": "#/$defs/sections" }
+          }
+        }
+      }
+    },
+    "localizedLabels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zh-CN", "en-US"],
+      "properties": {
+        "zh-CN": { "type": "string", "minLength": 1 },
+        "en-US": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 2 }
+    }
+  }
+}

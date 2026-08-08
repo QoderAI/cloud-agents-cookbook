@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qoder.com/schemas/cookbook/content.schema.json",
+  "title": "Qoder Cloud Agents Cookbook content metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "slug", "title", "summary", "type", "category", "tags", "author", "locale"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "slug": { "$ref": "#/$defs/slug" },
+    "title": { "type": "string", "minLength": 4, "maxLength": 100, "pattern": "\\S" },
+    "summary": { "type": "string", "minLength": 20, "maxLength": 240, "pattern": "\\S" },
+    "type": { "enum": ["recipe", "best-practice", "showcase", "workshop"] },
+    "category": { "enum": ["quick-start", "build-deploy", "enterprise-integration", "operations-governance", "evaluation-reliability"] },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/tag" }
+    },
+    "author": { "$ref": "#/$defs/person" },
+    "locale": { "enum": ["zh-CN", "en-US"] },
+    "maintainer": { "$ref": "#/$defs/person" },
+    "cover": { "type": "string", "pattern": "^\\./assets/[a-z0-9][a-z0-9._-]*\\.(png|jpg|jpeg|webp)$" },
+    "related": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/slug" }
+    },
+    "source_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "translation_of": { "$ref": "#/$defs/slug" }
+  },
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 80,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "tag": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 40,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "person": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "\\S" },
+        "github": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 39,
+          "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+        }
+      }
+    }
+  }
+}

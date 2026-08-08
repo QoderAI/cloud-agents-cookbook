@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qoder.com/schemas/cookbook/featured.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "slugs"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "slugs": {
+      "type": "array",
+      "maxItems": 12,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }
+    }
+  }
+}

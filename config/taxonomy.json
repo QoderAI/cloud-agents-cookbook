@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "categories": [
+    { "id": "quick-start", "labels": { "zh-CN": "快速开始", "en-US": "Quick Start" } },
+    { "id": "build-deploy", "labels": { "zh-CN": "构建与部署", "en-US": "Build & Deploy" } },
+    { "id": "enterprise-integration", "labels": { "zh-CN": "企业集成", "en-US": "Enterprise Integration" } },
+    { "id": "operations-governance", "labels": { "zh-CN": "运维与治理", "en-US": "Operations & Governance" } },
+    { "id": "evaluation-reliability", "labels": { "zh-CN": "评测与可靠性", "en-US": "Evaluation & Reliability" } }
+  ],
+  "tags": [
+    "agent", "agent-version", "environment", "session", "template", "identity", "credential", "api-key", "artifact", "files",
+    "runtime", "sandbox", "filesystem", "command-execution", "code-execution", "background-task", "long-running-task", "concurrency", "timeout", "cancellation",
+    "api", "rest-api", "sdk", "cli", "event-stream", "sse", "webhook", "polling", "idempotency", "rate-limit",
+    "tool-use", "tool-permission", "mcp", "skill", "browser", "cloud-use", "computer-use", "workflow-automation", "scheduled-task", "resource-cleanup",
+    "forward", "github", "gitlab", "slack", "dingtalk", "microsoft-teams", "database", "object-storage", "email", "calendar",
+    "data", "context-engineering", "memory", "short-term-memory", "long-term-memory", "personalization", "knowledge-base", "retrieval", "structured-output", "multimodal",
+    "security", "authentication", "authorization", "rbac", "permission-policy", "secrets-management", "network-policy", "multi-tenant", "tenant-isolation", "audit",
+    "production", "observability", "logging", "metrics", "tracing", "alerting", "error-handling", "retry", "lifecycle", "state-management",
+    "evals", "outcomes", "acceptance-criteria", "verification", "testing", "benchmark", "regression-testing", "quality-gate", "human-in-the-loop", "loop",
+    "cost", "token-usage", "latency", "throughput", "resource-management", "autoscaling", "queue", "caching", "optimization", "report"
+  ]
+}

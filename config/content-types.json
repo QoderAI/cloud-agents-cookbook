@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "types": {
+    "recipe": {
+      "directory": "recipes",
+      "labels": { "zh-CN": "操作指南", "en-US": "Recipe" },
+      "required_sections": {
+        "zh-CN": ["目标与适用场景", "操作步骤", "验证结果"],
+        "en-US": ["Goal and use case", "Steps", "Verification"]
+      }
+    },
+    "best-practice": {
+      "directory": "best-practices",
+      "labels": { "zh-CN": "最佳实践", "en-US": "Best Practice" },
+      "required_sections": {
+        "zh-CN": ["适用场景与边界", "推荐做法", "验证与维护"],
+        "en-US": ["Use cases and boundaries", "Recommended approach", "Validation and maintenance"]
+      }
+    },
+    "showcase": {
+      "directory": "showcases",
+      "labels": { "zh-CN": "案例展示", "en-US": "Showcase" },
+      "required_sections": {
+        "zh-CN": ["场景与成果", "实现思路", "复用建议"],
+        "en-US": ["Scenario and outcome", "Implementation approach", "Reuse guidance"]
+      }
+    },
+    "workshop": {
+      "directory": "workshops",
+      "labels": { "zh-CN": "工作坊", "en-US": "Workshop" },
+      "required_sections": {
+        "zh-CN": ["学习目标", "课程安排", "练习与总结"],
+        "en-US": ["Learning goals", "Agenda", "Exercises and recap"]
+      }
+    }
+  }
+}
