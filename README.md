@@ -20,21 +20,21 @@ Content is available in `zh-CN` and `en-US` and is organized under `content/<loc
 1. Read [CONTRIBUTING.md](./CONTRIBUTING.md).
 2. Copy one of the templates from [`templates/`](./templates/).
 3. Create an article with local assets under `content/`.
-4. Run `npm ci` and `npm run check`.
+4. Optionally run the recommended local checks if Node.js 20 or later is available.
 5. Commit with `git commit -s` and open a pull request.
 
-GitHub Actions validates every pull request automatically. Passing checks prove that the submission can be parsed and rendered; maintainers still review accuracy, safety, licensing, and publication value. Only a maintainer merges an approved pull request.
+Local validation is not required to submit. GitHub Actions validates every pull request automatically and provides the required preview. Passing checks prove that the submission can be parsed and rendered; maintainers still review accuracy, safety, licensing, and publication value. Only a maintainer merges an approved pull request.
 
-## Local commands
+## Optional local validation
+
+These commands are recommended for faster feedback when Node.js 20 or later is available:
 
 ```bash
-npm ci
+npm ci --ignore-scripts
 npm run check
-npm run build
-npm run preview
 ```
 
-Generated files are written to `dist/` and are not committed.
+The generated preview is written to `dist/preview/` and is not committed. Contributors without Node.js can open a pull request directly and review the preview produced by GitHub Actions.
 
 ## Contracts
 

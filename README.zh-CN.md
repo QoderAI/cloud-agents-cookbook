@@ -20,21 +20,21 @@ Qoder Cloud Agents Cookbook 是面向 Cloud Agents 用户的公开实践内容�
 1. 阅读 [中文投稿说明](./CONTRIBUTING.zh-CN.md)。
 2. 从 [`templates/`](./templates/) 复制对应模板。
 3. 在 `content/` 的正确目录中创建文章和本地资源。
-4. 运行 `npm ci` 和 `npm run check`。
+4. 如果本地有 Node.js 20 或更高版本，可选择运行推荐的本地检查。
 5. 使用 `git commit -s` 提交并创建 Pull Request。
 
-作者创建或更新 PR 后，GitHub Actions 会自动检查格式与渲染契约。自动检查通过不代表内容自动发布；Maintainer 仍会人工审核事实、公开范围、授权和内容价值，并人工 Merge。
+提交投稿不强制要求本地检查。作者创建或更新 PR 后，GitHub Actions 会自动检查格式与渲染契约，并生成必需的页面预览。自动检查通过不代表内容自动发布；Maintainer 仍会人工审核事实、公开范围、授权和内容价值，并人工 Merge。
 
-## 本地命令
+## 可选的本地检查
+
+如果本地有 Node.js 20 或更高版本，建议运行以下命令以便更快发现问题：
 
 ```bash
-npm ci
+npm ci --ignore-scripts
 npm run check
-npm run build
-npm run preview
 ```
 
-构建结果写入 `dist/`，不提交到仓库。
+页面预览写入 `dist/preview/`，不提交到仓库。没有 Node.js 的投稿者可以直接创建 PR，并查看 GitHub Actions 生成的预览。
 
 ## 内容契约
 

@@ -24,6 +24,6 @@
 - [ ] I did not use GitHub Alerts, video, raw HTML, JavaScript, MDX, iframe, remote images, SVG, or interactive content.
 - [ ] Images are local PNG, JPEG, or WebP files with meaningful alternative text and documented rights.
 - [ ] The contribution contains no credentials, customer data, personal information, internal links, or unreleased capabilities.
-- [ ] I ran `npm run check` and reviewed the generated preview.
+- [ ] I reviewed the generated preview locally or from the required GitHub Actions checks.
 - [ ] Every commit contains a `Signed-off-by` trailer.
 - [ ] I understand that maintainer Merge to `main` is the publication event.

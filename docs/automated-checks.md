@@ -1,6 +1,6 @@
 # Automated pull-request checks
 
-Automated checks run when a pull request is opened, reopened, or updated. The same commands run locally with `npm run check`.
+Automated checks run when a pull request is opened, reopened, or updated. Running the same validation locally with `npm run check` is recommended for faster feedback, but it is not required to open a pull request.
 
 ## Required status checks
 
