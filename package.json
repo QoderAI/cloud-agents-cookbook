@@ -23,7 +23,7 @@
     "markdown-it": "14.3.0",
     "markdown-it-footnote": "4.0.0",
     "markdown-it-task-lists": "2.1.1",
-    "mermaid": "^11.16.1",
+    "mermaid": "11.16.1",
     "yaml": "2.9.0"
   },
   "license": "SEE LICENSE IN LICENSE"
