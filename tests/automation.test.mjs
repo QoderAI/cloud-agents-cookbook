@@ -101,4 +101,5 @@ test('the repository vendors complete license texts and scopes every top-level s
   assert.ok(apache.length > 10_000 && apache.includes('TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION'));
   assert.ok(creativeCommons.length > 15_000 && creativeCommons.includes('Attribution 4.0 International'));
   for (const surface of ['content/', 'templates/', 'docs/', 'scripts/', 'tests/', '.github/', 'preview/', 'schema/', 'config/']) assert.ok(scope.includes(`\`${surface}\``));
+  assert.match(scope, /`DCO` retains its own verbatim-copy terms and is not relicensed/);
 });

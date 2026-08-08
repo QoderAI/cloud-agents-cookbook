@@ -30,6 +30,7 @@ function materialize(template, locale, type) {
     '{{OPTIONAL_CONTENT}}': locale === 'zh-CN' ? '补充有助于理解但不属于必填结构的公开资料。' : 'Add public context that is useful but not part of the required structure.',
     '{{EXAMPLE_COMMAND}}': 'qoder sessions get session-123',
     '{{MERMAID_DIAGRAM}}': 'flowchart LR\n  A[Request] --> B[Cloud Agent]\n  B --> C[Verified result]',
+    '{{DIAGRAM_INTRO}}': locale === 'zh-CN' ? '下图展示经过验证的实际处理流程。' : 'The diagram shows the verified implementation flow.',
     '{{DECISION}}': locale === 'zh-CN' ? '会话恢复' : 'Session recovery',
     '{{APPROACH}}': locale === 'zh-CN' ? '复用稳定标识' : 'Reuse a stable identifier',
     '{{RATIONALE}}': locale === 'zh-CN' ? '避免重复创建任务' : 'Prevents duplicate task creation'
@@ -44,6 +45,7 @@ for (const locale of ['zh-CN', 'en-US']) {
     test(`${locale} ${type} template materializes into valid content`, async () => {
       const root = await mkdtemp(path.join(tmpdir(), 'qca-template-test-'));
       const template = await readFile(path.join(repoRoot, 'templates', locale, `${type}.md`), 'utf8');
+      assert.doesNotMatch(template, /Replace this|替换为经过验证/);
       const slug = `${type}-template-example`;
       const destination = path.join(root, 'content', locale, directory, slug);
       await mkdir(destination, { recursive: true });

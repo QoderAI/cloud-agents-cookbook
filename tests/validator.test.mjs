@@ -196,3 +196,12 @@ test('rejects internal, credentialed, video, and markup-bearing metadata', async
   assert.ok(rules(result).has('LINK-005'));
   assert.ok(rules(result).has('LINK-007'));
 });
+
+test('rejects IPv6 loopback, private, and link-local source URLs', async () => {
+  for (const sourceUrl of ['https://[::1]/private', 'https://[fd00::1]/private', 'https://[fe80::1]/private']) {
+    const result = await validateMutation((source) => source.replace('locale: zh-CN', `locale: zh-CN\nsource_url: ${sourceUrl}`));
+    assert.ok(rules(result).has('LINK-005'), sourceUrl);
+  }
+  const bodyResult = await validateMutation((source) => `${source}\n\n[Private endpoint](https://[::1]/internal)\n`);
+  assert.ok(rules(bodyResult).has('LINK-005') || rules(bodyResult).has('LINK-002'));
+});

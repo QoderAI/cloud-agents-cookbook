@@ -21,7 +21,7 @@ locale: zh-CN
 
 {{SECTION_2_CONTENT}}
 
-下面的流程图可以替换成经过验证的实际方案；不需要图时删除整个代码块和本句。
+{{DIAGRAM_INTRO}}
 
 ```mermaid
 {{MERMAID_DIAGRAM}}

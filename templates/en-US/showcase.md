@@ -21,7 +21,7 @@ locale: en-US
 
 {{SECTION_2_CONTENT}}
 
-Replace this diagram with the verified implementation flow, or remove the sentence and diagram when they are unnecessary.
+{{DIAGRAM_INTRO}}
 
 ```mermaid
 {{MERMAID_DIAGRAM}}

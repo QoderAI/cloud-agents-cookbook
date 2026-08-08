@@ -19,6 +19,21 @@ const internalPattern = /(?:alibaba-inc\.com|alibabacloud\.com\.cn|localhost|127
 const secretPattern = /(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{20,}\b|\bsk-[A-Za-z0-9_-]{20,}\b)/;
 let mermaidPromise;
 
+function isPrivateHostname(value) {
+  const hostname = value.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local') || hostname.endsWith('.internal')) return true;
+  if (hostname.includes(':')) {
+    if (hostname === '::' || hostname === '::1' || hostname.startsWith('fc') || hostname.startsWith('fd') || /^fe[89ab]/.test(hostname)) return true;
+    if (hostname.startsWith('::ffff:')) return isPrivateHostname(hostname.slice('::ffff:'.length));
+    return false;
+  }
+  const octets = hostname.split('.').map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return false;
+  const [first, second] = octets;
+  return first === 0 || first === 10 || first === 127 || (first === 100 && second >= 64 && second <= 127)
+    || (first === 169 && second === 254) || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168);
+}
+
 async function parseMermaid(diagram) {
   if (!mermaidPromise) {
     const dom = new JSDOM('<!doctype html><html><body></body></html>');
@@ -77,6 +92,7 @@ async function validateArticle(root, articlePath, contracts) {
     try {
       const sourceUrl = new URL(metadata.source_url);
       if (sourceUrl.protocol !== 'https:' || sourceUrl.username || sourceUrl.password) push(errors, 'META-015', file, 'source_url must be a public HTTPS URL without embedded credentials.');
+      if (isPrivateHostname(sourceUrl.hostname) || internalPattern.test(sourceUrl.hostname)) push(errors, 'LINK-005', file, 'source_url must not use a local, internal, private, or link-local host.');
     } catch {
       push(errors, 'META-015', file, 'source_url must be a valid public HTTPS URL.');
     }
@@ -178,6 +194,14 @@ async function validateArticle(root, articlePath, contracts) {
     if (!/^https:\/\//i.test(link.target) && !/^#[^\s]+$/u.test(link.target)) push(errors, 'LINK-002', file, `Link '${link.target}' must use https:// or a same-page heading fragment.`);
     if (videoPattern.test(link.target)) push(errors, 'LINK-007', file, `Video link '${link.target}' is not supported.`);
     if (internalPattern.test(link.target)) push(errors, 'LINK-005', file, `Internal link '${link.target}' is not allowed.`);
+    if (/^https:\/\//i.test(link.target)) {
+      try {
+        const targetUrl = new URL(link.target);
+        if (targetUrl.username || targetUrl.password || isPrivateHostname(targetUrl.hostname) || internalPattern.test(targetUrl.hostname)) push(errors, 'LINK-005', file, `Link '${link.target}' must not use credentials or a local, internal, private, or link-local host.`);
+      } catch {
+        push(errors, 'LINK-002', file, `Link '${link.target}' is not a valid HTTPS URL.`);
+      }
+    }
     if (/^(?:这里|点击|here|click here)$/i.test(link.text)) warnings.push(diagnostic('LINK-004', file, `Use descriptive link text instead of '${link.text}'.`));
   }
 

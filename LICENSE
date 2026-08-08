@@ -2,9 +2,11 @@
 
 This repository uses two licenses.
 
-1. Files under `content/`, `templates/`, and `docs/`; content and documentation images; and the root `README*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `SUPPORT.md`, and `DCO` files are licensed under the Creative Commons Attribution 4.0 International License. The complete legal text is in `LICENSES/CC-BY-4.0.txt`.
+1. Files under `content/`, `templates/`, and `docs/`; content and documentation images; and the root `README*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and `SUPPORT.md` files are licensed under the Creative Commons Attribution 4.0 International License. The complete legal text is in `LICENSES/CC-BY-4.0.txt`.
 2. Files under `scripts/`, `tests/`, `.github/`, `preview/`, `schema/`, and `config/`; executable standalone examples; and the root `package.json`, `package-lock.json`, `.editorconfig`, `.gitignore`, `NOTICE`, and `THIRD_PARTY_NOTICES.md` files are licensed under the Apache License 2.0. The complete legal text is in `LICENSES/Apache-2.0.txt`.
 
 `LICENSE` is the repository's scope declaration. Files under `LICENSES/` retain their authoritative license text and are not relicensed by this declaration.
+
+`DCO` retains its own verbatim-copy terms and is not relicensed by this declaration.
 
 If a file carries an SPDX identifier, that identifier controls. If no identifier is present, the directory scope above controls. Third-party material must retain its own attribution and license notice.
