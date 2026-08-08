@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { validateRepository } from './validate.mjs';
 import { copyArticleAssets, manifestForDirectory, normalizeItem, writeJson } from './lib/catalog.mjs';
+import { loadContracts } from './lib/contracts.mjs';
 
 export async function buildCatalog(root = process.cwd(), options = {}) {
   const contractRoot = options.contractRoot ?? root;
@@ -14,12 +15,21 @@ export async function buildCatalog(root = process.cwd(), options = {}) {
   const sourceCommit = options.sourceCommit ?? process.env.GITHUB_SHA ?? 'working-tree';
   const result = await validateRepository(root, { contractRoot });
   if (result.errors.length) throw new Error(`Cannot build catalog: ${result.errors.length} validation error(s).`);
+  const contracts = await loadContracts(contractRoot);
 
   await rm(outDir, { recursive: true, force: true });
   const normalized = await Promise.all(result.items.map((item) => normalizeItem(root, item)));
   normalized.sort((a, b) => `${a.locale}/${a.slug}`.localeCompare(`${b.locale}/${b.slug}`));
   const catalog = { schema_version: 1, source_commit: sourceCommit, items: normalized };
   await writeJson(path.join(outDir, 'catalog.json'), catalog);
+  await writeJson(path.join(outDir, 'governance.json'), {
+    schema_version: 1,
+    taxonomy: contracts.config.taxonomy,
+    content_types: contracts.config['content-types'],
+    featured: contracts.config.featured,
+    redirects: contracts.config.redirects,
+    content_lifecycle: contracts.config['content-lifecycle']
+  });
 
   for (let index = 0; index < result.items.length; index += 1) {
     const item = result.items[index];

@@ -18,7 +18,11 @@ jobs:
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      MERGE_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+      MERGE_SHA: ${{ github.sha }}
       ASSOCIATION: ${{ github.event.pull_request.author_association }}
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      REPOSITORY: ${{ github.repository }}
     steps:
       - name: Check out trusted tooling
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -29,7 +33,7 @@ jobs:
       - name: Check out submission as data
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ env.HEAD_SHA }}
+          ref: ${{ env.MERGE_REF }}
           path: submission
           fetch-depth: 0
           persist-credentials: false
@@ -48,31 +52,32 @@ jobs:
         shell: bash
         run: |
           args=(--files changed-files.txt)
-          case "$ASSOCIATION" in OWNER|MEMBER|COLLABORATOR) args+=(--allow-infrastructure) ;; esac
+          if [[ "$HEAD_REPO" == "$REPOSITORY" ]]; then
+            case "$ASSOCIATION" in OWNER|MEMBER|COLLABORATOR) args+=(--allow-infrastructure) ;; esac
+          fi
           node trusted/scripts/check-contribution-scope.mjs "${args[@]}"
+      - name: Enforce stable published slugs
+        run: node trusted/scripts/check-stable-slugs.mjs --base trusted --candidate submission
       - name: Test trusted tooling
         working-directory: trusted
         run: npm test
       - name: Validate content contribution with trusted tooling
-        if: ${{ !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        if: ${{ github.event.pull_request.head.repo.full_name != github.repository || !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         run: node trusted/scripts/validate.mjs --root submission --contract-root trusted
       - name: Build content contribution catalog with trusted tooling
-        if: ${{ !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
-        run: node trusted/scripts/build-catalog.mjs --root submission --contract-root trusted --out-dir artifacts/catalog --source-commit "$HEAD_SHA"
+        if: ${{ github.event.pull_request.head.repo.full_name != github.repository || !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        run: node trusted/scripts/build-catalog.mjs --root submission --contract-root trusted --out-dir artifacts/catalog --source-commit "$MERGE_SHA"
       - name: Install proposed dependencies
-        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         working-directory: submission
         run: npm ci --ignore-scripts
-      - name: Test proposed infrastructure
-        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+      - name: Check proposed infrastructure
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         working-directory: submission
-        run: npm test
-      - name: Validate with proposed infrastructure
-        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
-        run: node submission/scripts/validate.mjs --root submission --contract-root submission
+        run: npm run check
       - name: Build catalog with proposed infrastructure
-        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
-        run: node submission/scripts/build-catalog.mjs --root submission --contract-root submission --out-dir artifacts/catalog --source-commit "$HEAD_SHA"
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        run: node submission/scripts/build-catalog.mjs --root submission --contract-root submission --out-dir artifacts/catalog --source-commit "$MERGE_SHA"
       - name: Upload catalog artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

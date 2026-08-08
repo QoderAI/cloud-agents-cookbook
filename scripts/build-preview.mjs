@@ -5,18 +5,16 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import MarkdownIt from 'markdown-it';
-import footnote from 'markdown-it-footnote';
-import taskLists from 'markdown-it-task-lists';
 import { validateRepository } from './validate.mjs';
 import { tocFromBody } from './lib/catalog.mjs';
+import { createMarkdownParser } from './lib/markdown.mjs';
 
 function escapeHtml(value) {
   return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
 function markdownRenderer() {
-  const md = new MarkdownIt({ html: false, linkify: false, typographer: false }).use(footnote).use(taskLists, { enabled: false, label: true });
+  const md = createMarkdownParser();
   const defaultFence = md.renderer.rules.fence;
   md.renderer.rules.fence = (tokens, index, options, env, self) => {
     const token = tokens[index];
@@ -25,8 +23,9 @@ function markdownRenderer() {
   };
   const defaultHeadingOpen = md.renderer.rules.heading_open ?? ((tokens, index, options, env, self) => self.renderToken(tokens, index, options));
   md.renderer.rules.heading_open = (tokens, index, options, env, self) => {
-    const next = tokens[index + 1];
-    if (next?.type === 'inline') tokens[index].attrSet('id', tocFromBody(`${tokens[index].markup} ${next.content}`)[0]?.id ?? 'section');
+    const id = env.headingIds?.[env.headingIndex ?? 0] ?? 'section';
+    env.headingIndex = (env.headingIndex ?? 0) + 1;
+    tokens[index].attrSet('id', id);
     return defaultHeadingOpen(tokens, index, options, env, self);
   };
   return md;
@@ -36,8 +35,9 @@ function articleHtml(item, md) {
   const metadata = item.metadata;
   const toc = tocFromBody(item.body);
   const body = item.body.replaceAll('./assets/', `./assets/${metadata.slug}/`);
-  const tocItems = toc.map((entry) => `<li class="depth-${entry.depth}"><a href="#${escapeHtml(entry.id)}">${escapeHtml(entry.text)}</a></li>`).join('');
-  return `<article class="article"><div class="article-body"><p class="eyebrow">${escapeHtml(metadata.type)} · ${escapeHtml(metadata.category)}</p><h1>${escapeHtml(metadata.title)}</h1><p class="summary">${escapeHtml(metadata.summary)}</p><div class="meta"><span>By ${escapeHtml(metadata.author.name)}</span><span>${escapeHtml(metadata.locale)}</span><span>${escapeHtml(metadata.tags.join(' · '))}</span></div>${md.render(body)}</div><nav class="toc" aria-label="Table of contents"><strong>On this page</strong><ul>${tocItems}</ul></nav></article>`;
+  const headingIds = toc.map((entry) => `${metadata.slug}--${entry.id}`);
+  const tocItems = toc.map((entry, index) => `<li class="depth-${entry.depth}"><a href="#${escapeHtml(headingIds[index])}">${escapeHtml(entry.text)}</a></li>`).join('');
+  return `<article class="article"><div class="article-body"><p class="eyebrow">${escapeHtml(metadata.type)} · ${escapeHtml(metadata.category)}</p><h1>${escapeHtml(metadata.title)}</h1><p class="summary">${escapeHtml(metadata.summary)}</p><div class="meta"><span>By ${escapeHtml(metadata.author.name)}</span><span>${escapeHtml(metadata.locale)}</span><span>${escapeHtml(metadata.tags.join(' · '))}</span></div>${md.render(body, { headingIds, headingIndex: 0 })}</div><nav class="toc" aria-label="Table of contents"><strong>On this page</strong><ul>${tocItems}</ul></nav></article>`;
 }
 
 export async function buildPreview(root = process.cwd(), options = {}) {
@@ -48,6 +48,7 @@ export async function buildPreview(root = process.cwd(), options = {}) {
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
   await cp(path.join(contractRoot, 'preview', 'styles.css'), path.join(outDir, 'styles.css'));
+  await cp(path.join(contractRoot, 'preview', 'init.js'), path.join(outDir, 'init.js'));
   await cp(path.join(contractRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.min.js'), path.join(outDir, 'mermaid.min.js'));
   await cp(path.join(contractRoot, 'THIRD_PARTY_NOTICES.md'), path.join(outDir, 'THIRD_PARTY_NOTICES.md'));
 

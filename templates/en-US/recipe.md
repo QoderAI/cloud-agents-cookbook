@@ -22,7 +22,7 @@ locale: en-US
 {{SECTION_2_CONTENT}}
 
 ```bash
-qoder-example --session <SESSION_ID>
+{{EXAMPLE_COMMAND}}
 ```
 
 ## Verification

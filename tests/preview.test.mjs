@@ -23,5 +23,19 @@ test('renders the supported content contract into an accessible static preview',
   assert.match(html, /<pre class="mermaid">/);
   assert.match(html, /<code class="language-bash">/);
   assert.doesNotMatch(html, /<script[^>]+src="https?:\/\//);
+  assert.match(html, /Content-Security-Policy/);
+  assert.doesNotMatch(html, /<script>[^<]+<\/script>/);
+  await access(path.join(outDir, 'init.js'));
   await access(path.join(outDir, 'THIRD_PARTY_NOTICES.md'));
+});
+
+test('namespaces and de-duplicates rendered heading identifiers', async () => {
+  const root = await makeFixtureWorkspace('valid', (source) => source.replace('## 验证结果', '## Foo!\n\nFirst.\n\n## Foo?\n\nSecond.\n\n## 验证结果'));
+  const outDir = path.join(root, 'preview-output');
+  await buildPreview(root, { contractRoot: repoRoot, outDir });
+  const html = await readFile(path.join(outDir, 'index.html'), 'utf8');
+
+  assert.match(html, /id="recover-a-session--foo"/);
+  assert.match(html, /id="recover-a-session--foo-1"/);
+  assert.match(html, /href="#recover-a-session--foo-1"/);
 });

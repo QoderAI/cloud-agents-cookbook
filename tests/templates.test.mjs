@@ -27,7 +27,12 @@ function materialize(template, locale, type) {
     '{{SECTION_1_CONTENT}}': locale === 'zh-CN' ? '说明用户需要解决的问题、适用对象以及明确边界。' : 'Describe the user problem, intended audience, and explicit boundaries.',
     '{{SECTION_2_CONTENT}}': locale === 'zh-CN' ? '给出可复用的方法、必要步骤和关键决策，并使用公开可验证的信息。' : 'Provide a reusable method, necessary steps, and key decisions using public, verifiable information.',
     '{{SECTION_3_CONTENT}}': locale === 'zh-CN' ? '列出验证方法、预期结果以及后续维护时需要关注的事项。' : 'State the verification method, expected outcome, and maintenance considerations.',
-    '{{OPTIONAL_CONTENT}}': locale === 'zh-CN' ? '补充有助于理解但不属于必填结构的公开资料。' : 'Add public context that is useful but not part of the required structure.'
+    '{{OPTIONAL_CONTENT}}': locale === 'zh-CN' ? '补充有助于理解但不属于必填结构的公开资料。' : 'Add public context that is useful but not part of the required structure.',
+    '{{EXAMPLE_COMMAND}}': 'qoder sessions get session-123',
+    '{{MERMAID_DIAGRAM}}': 'flowchart LR\n  A[Request] --> B[Cloud Agent]\n  B --> C[Verified result]',
+    '{{DECISION}}': locale === 'zh-CN' ? '会话恢复' : 'Session recovery',
+    '{{APPROACH}}': locale === 'zh-CN' ? '复用稳定标识' : 'Reuse a stable identifier',
+    '{{RATIONALE}}': locale === 'zh-CN' ? '避免重复创建任务' : 'Prevents duplicate task creation'
   };
   let output = template;
   for (const [token, value] of Object.entries(values)) output = output.replaceAll(token, value);

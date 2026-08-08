@@ -6,7 +6,7 @@ Automated checks run when a pull request is opened, reopened, or updated. The sa
 
 | Check | Responsibility |
 |---|---|
-| `Validate content / validate` | Contribution scope, tooling tests, Metadata, Markdown, assets, links, safety rules, and normalized Catalog |
+| `Validate content / validate` | Contribution scope, stable slugs, tooling tests, Metadata, Markdown, assets, links, safety rules, and normalized Catalog |
 | `DCO / dco` | A valid `Signed-off-by` trailer in every pull-request commit |
 | `Preview content / preview` | A downloadable static preview built with trusted tooling |
 
@@ -26,8 +26,8 @@ An Error blocks merge. A Warning is shown for human review but does not block by
 
 ## Security model
 
-Public pull requests receive a read-only token and no Secrets. The workflow checks out validator code from the base commit into `trusted/`, checks out contributor files into `submission/`, and invokes only code from `trusted/`. Submitted scripts and workflows are never executed.
+Public and fork pull requests receive a read-only token and no Secrets. The workflow checks out validator code from the base commit into `trusted/`, checks out GitHub's synthetic merge tree into `submission/`, and invokes only code from `trusted/`. Fork-supplied scripts and workflows are never executed, even when the author is an organization member or collaborator.
 
-Ordinary external pull requests may change only `content/**`. Maintainers can change infrastructure in a separate pull request, and all existing content is revalidated against the proposed contracts before merge.
+Ordinary external pull requests may change only `content/**`. A trusted owner, member, or collaborator may change infrastructure only from a branch in this repository; that no-secret, read-only run additionally executes the complete proposed `npm run check`. All existing content is revalidated against the prospective merged contracts before merge.
 
 Automated checks do not determine factual correctness, public product status, copyright ownership, customer authorization, or whether the content should be published. Maintainers review these manually.

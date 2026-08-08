@@ -10,11 +10,12 @@ This repository is the editorial source of truth. The Qoder website or console c
 dist/
 ├── catalog.json
 ├── manifest.json
+├── governance.json
 ├── content/<locale>/<slug>.json
 └── assets/<locale>/<slug>/<file>
 ```
 
-`catalog.json` contains normalized Metadata, reading time, TOC, source path, content hash, and available Git timestamps. Article JSON adds the Markdown body. `manifest.json` contains Schema version, source commit, and SHA-256 for every generated file except the manifest itself.
+`catalog.json` contains normalized Metadata, reading time, TOC, source path, content hash, and available Git timestamps. Article JSON adds the Markdown body. `governance.json` contains the exact taxonomy labels, content-type labels and required sections, featured ordering, redirects, and lifecycle state for the same source commit; consumers must use it instead of hard-coding those rules. `manifest.json` contains Schema version, source commit, and SHA-256 for every generated file except the manifest itself.
 
 Consumers must reject an unsupported Schema version, missing file, checksum mismatch, duplicate slug, or source commit mismatch.
 
@@ -24,7 +25,7 @@ The repository always generates a trusted static preview Artifact. It proves par
 
 A product-fidelity preview service may consume the same Catalog artifact and expose a temporary URL. It must:
 
-1. identify the pull-request head commit;
+1. identify the pull request and synthetic merge commit built against the current `main`;
 2. render only the generated, validated artifact;
 3. use the production Cookbook components;
 4. expose no repository or publication Secrets to fork code;

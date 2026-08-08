@@ -7,7 +7,7 @@ Apply these settings after creating `QoderAI/cloud-agents-cookbook` and before a
 - Default branch: `main`.
 - Enable Issues, Discussions, and private vulnerability reporting.
 - Disable Wiki unless it becomes a deliberately maintained surface.
-- Prefer squash merge or rebase merge; do not create unsigned merge commits when DCO is required.
+- Enable squash merge only. Disable merge commits and rebase merge so generated publication dates come from trusted main-branch squash commits rather than contributor-controlled author dates.
 - Keep Actions permissions read-only by default and do not allow Actions to approve pull requests.
 
 ## Branch protection for `main`
@@ -19,6 +19,7 @@ Apply these settings after creating `QoderAI/cloud-agents-cookbook` and before a
 - Require all conversations to be resolved.
 - Require the latest reviewed commit.
 - Require `Validate content / validate`, `DCO / dco`, and `Preview content / preview`.
+- Require branches to be up to date before merging so the required checks always represent the prospective merged tree. Do not enable Merge Queue until the workflows explicitly support the `merge_group` event.
 - Block force pushes and branch deletion.
 - Do not allow bypass except for documented emergency recovery.
 

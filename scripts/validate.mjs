@@ -10,7 +10,7 @@ import { JSDOM } from 'jsdom';
 import { loadContracts, schemaMessages } from './lib/contracts.mjs';
 import { diagnostic, formatDiagnostic } from './lib/diagnostics.mjs';
 import { fileSize, listFiles, listTreeEntries, relativePortable } from './lib/files.mjs';
-import { allowedCodeLanguages, analyzeMarkdown, extractImages, extractLinks } from './lib/markdown.mjs';
+import { allowedCodeLanguages, analyzeMarkdown } from './lib/markdown.mjs';
 
 const typeDirectories = { recipe: 'recipes', 'best-practice': 'best-practices', showcase: 'showcases', workshop: 'workshops' };
 const platformFields = new Set(['reading_time', 'read_time', 'toc', 'published_at', 'updated_at', 'github_url', 'contributors']);
@@ -37,6 +37,15 @@ async function exists(file) {
   try { await access(file); return true; } catch { return false; }
 }
 
+async function assetSignatureMatches(file) {
+  const bytes = await readFile(file);
+  const extension = path.extname(file).toLowerCase();
+  if (extension === '.png') return bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (extension === '.jpg' || extension === '.jpeg') return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (extension === '.webp') return bytes.length >= 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+  return false;
+}
+
 async function validateArticle(root, articlePath, contracts) {
   const errors = [];
   const warnings = [];
@@ -59,8 +68,21 @@ async function validateArticle(root, articlePath, contracts) {
   for (const key of Object.keys(metadata)) {
     if (platformFields.has(key)) push(errors, 'META-017', file, `Platform-generated field '${key}' is not allowed.`);
   }
+  const metadataText = JSON.stringify(metadata);
+  if (/(?:<!--|<\/?[A-Za-z][^>]*>)/.test(metadataText)) push(errors, 'META-015', file, 'Metadata must not contain HTML or HTML comments.');
+  if (internalPattern.test(metadataText)) push(errors, 'LINK-005', file, 'Metadata contains an internal, local, or private-network address.');
+  if (videoPattern.test(metadataText)) push(errors, 'LINK-007', file, 'Metadata contains an unsupported video URL or filename.');
+  if (secretPattern.test(metadataText)) push(errors, 'SAFE-001', file, 'Metadata contains a possible credential or private key.');
+  if (metadata.source_url) {
+    try {
+      const sourceUrl = new URL(metadata.source_url);
+      if (sourceUrl.protocol !== 'https:' || sourceUrl.username || sourceUrl.password) push(errors, 'META-015', file, 'source_url must be a public HTTPS URL without embedded credentials.');
+    } catch {
+      push(errors, 'META-015', file, 'source_url must be a valid public HTTPS URL.');
+    }
+  }
   const tags = Array.isArray(metadata.tags) ? metadata.tags : [];
-  const allowedTags = new Set(contracts.config.taxonomy.tags);
+  const allowedTags = new Set(Array.isArray(contracts.config.taxonomy?.tags) ? contracts.config.taxonomy.tags : []);
   for (const tag of tags) if (!allowedTags.has(tag)) push(errors, 'META-011', file, `Unknown taxonomy tag '${tag}'.`);
 
   const parts = file.split('/');
@@ -126,7 +148,7 @@ async function validateArticle(root, articlePath, contracts) {
 
   const articleDirectory = path.dirname(articlePath);
   const referencedAssets = new Set();
-  for (const image of extractImages(prose)) {
+  for (const image of analysis.images) {
     if (!image.alt || /^(?:image|图片|replace)/i.test(image.alt)) push(errors, 'RENDER-009', file, 'Image must have meaningful alternative text.');
     if (/^https?:\/\//i.test(image.target)) push(errors, 'RENDER-010', file, 'Remote images are not supported.');
     if (!/^\.\/assets\/[a-z0-9][a-z0-9._-]*\.(?:png|jpe?g|webp)$/.test(image.target)) push(errors, 'RENDER-008', file, `Invalid image path '${image.target}'.`);
@@ -148,10 +170,11 @@ async function validateArticle(root, articlePath, contracts) {
   for (const asset of await listFiles(assetsDirectory)) {
     const assetName = path.basename(asset);
     if (!/^[a-z0-9][a-z0-9._-]*\.(?:png|jpe?g|webp)$/.test(assetName)) push(errors, 'FILE-004', relativePortable(root, asset), 'Asset filename or format is not supported.');
+    else if (!await assetSignatureMatches(asset)) push(errors, 'FILE-005', relativePortable(root, asset), 'Asset bytes do not match the declared PNG, JPEG, or WebP format.');
     if (!referencedAssets.has(assetName)) push(errors, 'FILE-007', relativePortable(root, asset), 'Asset is not referenced by the article.');
   }
 
-  for (const link of extractLinks(prose)) {
+  for (const link of analysis.links) {
     if (!/^https:\/\//i.test(link.target) && !/^#[^\s]+$/u.test(link.target)) push(errors, 'LINK-002', file, `Link '${link.target}' must use https:// or a same-page heading fragment.`);
     if (videoPattern.test(link.target)) push(errors, 'LINK-007', file, `Video link '${link.target}' is not supported.`);
     if (internalPattern.test(link.target)) push(errors, 'LINK-005', file, `Internal link '${link.target}' is not allowed.`);
@@ -173,6 +196,11 @@ export async function validateRepository(root = process.cwd(), options = {}) {
   for (const [configName, schemaName] of configSchemaPairs) {
     const validate = contracts.validators[schemaName];
     if (!validate(contracts.config[configName])) for (const message of schemaMessages(validate)) push(errors, 'CONFIG-001', `config/${configName}.json`, message);
+  }
+  const expectedCategories = ['quick-start', 'build-deploy', 'enterprise-integration', 'operations-governance', 'evaluation-reliability'];
+  const categoryIds = Array.isArray(contracts.config.taxonomy?.categories) ? contracts.config.taxonomy.categories.map((category) => category.id) : [];
+  if (categoryIds.length !== expectedCategories.length || new Set(categoryIds).size !== expectedCategories.length || expectedCategories.some((id) => !categoryIds.includes(id))) {
+    push(errors, 'CONFIG-005', 'config/taxonomy.json', 'Taxonomy must define each of the five required category IDs exactly once.');
   }
 
   const contentRoot = path.join(root, 'content');
@@ -206,15 +234,24 @@ export async function validateRepository(root = process.cwd(), options = {}) {
   for (const item of items) slugCounts.set(item.metadata.slug, (slugCounts.get(item.metadata.slug) ?? 0) + 1);
   for (const item of items) if (slugCounts.get(item.metadata.slug) > 1) push(errors, 'META-006', item.sourcePath, `Slug '${item.metadata.slug}' is not globally unique.`);
   const slugs = new Set(items.map((item) => item.metadata.slug));
+  const itemBySlug = new Map(items.map((item) => [item.metadata.slug, item]));
   for (const item of items) {
     for (const related of item.metadata.related ?? []) if (!slugs.has(related) || related === item.metadata.slug) push(errors, 'META-013', item.sourcePath, `Related slug '${related}' is missing or self-referential.`);
     if (item.metadata.translation_of && (!slugs.has(item.metadata.translation_of) || item.metadata.translation_of === item.metadata.slug)) push(errors, 'META-013', item.sourcePath, `translation_of '${item.metadata.translation_of}' is missing or self-referential.`);
+    else if (item.metadata.translation_of && itemBySlug.get(item.metadata.translation_of)?.metadata.locale === item.metadata.locale) push(errors, 'META-014', item.sourcePath, `translation_of '${item.metadata.translation_of}' must point to another locale.`);
   }
-  for (const slug of contracts.config.featured.slugs) if (!slugs.has(slug)) push(errors, 'CONFIG-002', 'config/featured.json', `Featured slug '${slug}' does not exist.`);
-  for (const redirect of contracts.config.redirects.redirects) {
+  for (const slug of Array.isArray(contracts.config.featured?.slugs) ? contracts.config.featured.slugs : []) if (!slugs.has(slug)) push(errors, 'CONFIG-002', 'config/featured.json', `Featured slug '${slug}' does not exist.`);
+  const redirectSources = new Set();
+  for (const redirect of Array.isArray(contracts.config.redirects?.redirects) ? contracts.config.redirects.redirects : []) {
+    if (redirectSources.has(redirect.from)) push(errors, 'CONFIG-003', 'config/redirects.json', `Duplicate redirect source '${redirect.from}'.`);
+    redirectSources.add(redirect.from);
+    if (slugs.has(redirect.from)) push(errors, 'CONFIG-003', 'config/redirects.json', `Redirect source '${redirect.from}' collides with a live slug.`);
     if (redirect.from === redirect.to || !slugs.has(redirect.to)) push(errors, 'CONFIG-003', 'config/redirects.json', `Redirect '${redirect.from}' must point to a different existing slug.`);
   }
-  for (const lifecycle of contracts.config['content-lifecycle'].items) {
+  const lifecycleSlugs = new Set();
+  for (const lifecycle of Array.isArray(contracts.config['content-lifecycle']?.items) ? contracts.config['content-lifecycle'].items : []) {
+    if (lifecycleSlugs.has(lifecycle.slug)) push(errors, 'CONFIG-004', 'config/content-lifecycle.json', `Duplicate lifecycle slug '${lifecycle.slug}'.`);
+    lifecycleSlugs.add(lifecycle.slug);
     if (!slugs.has(lifecycle.slug)) push(errors, 'CONFIG-004', 'config/content-lifecycle.json', `Lifecycle slug '${lifecycle.slug}' does not exist.`);
     if (lifecycle.replacement && (!slugs.has(lifecycle.replacement) || lifecycle.replacement === lifecycle.slug)) push(errors, 'CONFIG-004', 'config/content-lifecycle.json', `Replacement '${lifecycle.replacement}' is missing or self-referential.`);
   }

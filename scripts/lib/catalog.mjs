@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile, cp } from 'node:fs/promises';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { analyzeMarkdown, slugifyHeading } from './markdown.mjs';
+import { analyzeMarkdown } from './markdown.mjs';
 import { listFiles, relativePortable } from './files.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -22,18 +22,14 @@ export function readingTimeMinutes(body) {
 }
 
 export function tocFromBody(body) {
-  const counts = new Map();
-  return analyzeMarkdown(body).headings.filter((heading) => heading.level >= 2 && heading.level <= 4).map((heading) => {
-    const base = slugifyHeading(heading.text);
-    const count = counts.get(base) ?? 0;
-    counts.set(base, count + 1);
-    return { depth: heading.level, text: heading.text, id: count ? `${base}-${count}` : base };
-  });
+  return analyzeMarkdown(body).headings
+    .filter((heading) => heading.level >= 2 && heading.level <= 4)
+    .map((heading) => ({ depth: heading.level, text: heading.text, id: heading.id }));
 }
 
 async function gitDates(root, sourcePath) {
   try {
-    const { stdout } = await execFileAsync('git', ['log', '--follow', '--format=%aI', '--reverse', '--', sourcePath], { cwd: root });
+    const { stdout } = await execFileAsync('git', ['log', '--follow', '--format=%cI', '--reverse', '--', sourcePath], { cwd: root });
     const dates = stdout.trim().split(/\r?\n/).filter(Boolean);
     return dates.length ? { first_published_at: dates[0], updated_at: dates.at(-1) } : {};
   } catch {

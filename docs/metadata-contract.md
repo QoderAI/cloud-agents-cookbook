@@ -48,7 +48,7 @@ related:
 | `source_url` | Public `https://` source page |
 | `translation_of` | Existing slug for the other-language version |
 
-The platform generates reading time, table of contents, first publication time, update time, repository path, source commit, and contributor history. These fields are rejected when supplied in Frontmatter.
+The platform generates reading time, table of contents, first publication time, update time, repository path, source commit, and contributor history. Publication timestamps come from trusted main-branch squash-commit committer dates, never contributor-selected author dates. These fields are rejected when supplied in Frontmatter.
 
 The file path, locale, type directory, and slug must agree. Published slugs are stable; a changed slug requires a maintainer-owned redirect entry.
 

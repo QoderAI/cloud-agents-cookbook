@@ -18,6 +18,7 @@ jobs:
     env:
       BASE_SHA: ${{ github.event.pull_request.base.sha }}
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      MERGE_REF: refs/pull/${{ github.event.pull_request.number }}/merge
     steps:
       - name: Check out trusted tooling
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -28,7 +29,7 @@ jobs:
       - name: Check out submission as data
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ env.HEAD_SHA }}
+          ref: ${{ env.MERGE_REF }}
           path: submission
           persist-credentials: false
       - name: Use Node.js 20
@@ -41,14 +42,14 @@ jobs:
         working-directory: trusted
         run: npm ci --ignore-scripts
       - name: Build content contribution preview with trusted tooling
-        if: ${{ !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        if: ${{ github.event.pull_request.head.repo.full_name != github.repository || !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         run: node trusted/scripts/build-preview.mjs --root submission --contract-root trusted --out-dir artifacts/preview
       - name: Install proposed dependencies
-        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         working-directory: submission
         run: npm ci --ignore-scripts
       - name: Build preview with proposed infrastructure
-        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         run: node submission/scripts/build-preview.mjs --root submission --contract-root submission --out-dir artifacts/preview
       - name: Upload preview artifact
         id: preview-artifact

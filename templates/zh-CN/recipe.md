@@ -22,7 +22,7 @@ locale: zh-CN
 {{SECTION_2_CONTENT}}
 
 ```bash
-qoder-example --session <SESSION_ID>
+{{EXAMPLE_COMMAND}}
 ```
 
 ## 验证结果

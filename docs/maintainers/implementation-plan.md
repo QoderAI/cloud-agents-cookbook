@@ -87,7 +87,7 @@
 
 **Interfaces:**
 - Consumes: validated normalized content items.
-- Produces: `dist/catalog.json`, `dist/content/<locale>/<slug>.json`, copied assets, `dist/manifest.json`, checksums, and `dist/preview/index.html`.
+- Produces: `dist/catalog.json`, `dist/governance.json`, `dist/content/<locale>/<slug>.json`, copied assets, `dist/manifest.json`, checksums, and `dist/preview/index.html`.
 
 - [ ] Write a failing catalog test with hand-derived expected JSON ordering, reading-time value, and TOC entries.
 - [ ] Run the test and confirm failure because the builder does not exist.

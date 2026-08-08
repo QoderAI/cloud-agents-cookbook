@@ -23,7 +23,7 @@ locale: en-US
 
 | Decision | Recommendation | Reason |
 |---|---|---|
-| Example decision | Example approach | State a public, verifiable reason |
+| {{DECISION}} | {{APPROACH}} | {{RATIONALE}} |
 
 ## Validation and maintenance
 

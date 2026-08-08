@@ -24,9 +24,7 @@ locale: zh-CN
 下面的流程图可以替换成经过验证的实际方案；不需要图时删除整个代码块和本句。
 
 ```mermaid
-flowchart LR
-  A[输入] --> B[Cloud Agent]
-  B --> C[可验证结果]
+{{MERMAID_DIAGRAM}}
 ```
 
 ## 复用建议

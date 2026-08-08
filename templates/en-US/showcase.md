@@ -24,9 +24,7 @@ locale: en-US
 Replace this diagram with the verified implementation flow, or remove the sentence and diagram when they are unnecessary.
 
 ```mermaid
-flowchart LR
-  A[Input] --> B[Cloud Agent]
-  B --> C[Verified outcome]
+{{MERMAID_DIAGRAM}}
 ```
 
 ## Reuse guidance

@@ -51,12 +51,31 @@ test('maintainer infrastructure pull requests exercise the proposed tooling', as
   const validateSource = await readFile(path.join(repoRoot, '.github', 'workflows', 'validate.yml'), 'utf8');
   assert.match(validateSource, /name: Install proposed dependencies/);
   assert.match(validateSource, /working-directory: submission/);
-  assert.match(validateSource, /node submission\/scripts\/validate\.mjs --root submission --contract-root submission/);
+  assert.match(validateSource, /run: npm run check/);
   assert.match(validateSource, /node submission\/scripts\/build-catalog\.mjs --root submission --contract-root submission/);
 
   const previewSource = await readFile(path.join(repoRoot, '.github', 'workflows', 'preview.yml'), 'utf8');
   assert.match(previewSource, /name: Install proposed dependencies/);
   assert.match(previewSource, /node submission\/scripts\/build-preview\.mjs --root submission --contract-root submission/);
+});
+
+test('forks always use trusted tooling and pull requests validate the synthetic merge tree', async () => {
+  for (const workflowName of ['validate.yml', 'preview.yml']) {
+    const source = await readFile(path.join(repoRoot, '.github', 'workflows', workflowName), 'utf8');
+    assert.ok(source.includes('MERGE_REF: refs/pull/${{ github.event.pull_request.number }}/merge'));
+    assert.match(source, /ref: \${{ env\.MERGE_REF }}/);
+    assert.match(source, /github\.event\.pull_request\.head\.repo\.full_name == github\.repository/);
+  }
+
+  const validateSource = await readFile(path.join(repoRoot, '.github', 'workflows', 'validate.yml'), 'utf8');
+  assert.match(validateSource, /if \[\[ "\$HEAD_REPO" == "\$REPOSITORY" \]\]/);
+  assert.match(validateSource, /node trusted\/scripts\/check-stable-slugs\.mjs --base trusted --candidate submission/);
+});
+
+test('publication secrets are reachable only from a push to main', async () => {
+  const source = await readFile(path.join(repoRoot, '.github', 'workflows', 'publish.yml'), 'utf8');
+  assert.doesNotMatch(source, /workflow_dispatch/);
+  assert.match(source, /push:\n\s+branches: \[main\]/);
 });
 
 test('the publication archive excludes the pull-request preview', async () => {
@@ -73,4 +92,13 @@ test('the public dependency lock uses only npmjs.org and exact top-level version
   for (const [name, version] of Object.entries(packageJson.dependencies)) {
     assert.match(version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, `${name} must use an exact version`);
   }
+});
+
+test('the repository vendors complete license texts and scopes every top-level surface', async () => {
+  const apache = await readFile(path.join(repoRoot, 'LICENSES', 'Apache-2.0.txt'), 'utf8');
+  const creativeCommons = await readFile(path.join(repoRoot, 'LICENSES', 'CC-BY-4.0.txt'), 'utf8');
+  const scope = await readFile(path.join(repoRoot, 'LICENSE'), 'utf8');
+  assert.ok(apache.length > 10_000 && apache.includes('TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION'));
+  assert.ok(creativeCommons.length > 15_000 && creativeCommons.includes('Attribution 4.0 International'));
+  for (const surface of ['content/', 'templates/', 'docs/', 'scripts/', 'tests/', '.github/', 'preview/', 'schema/', 'config/']) assert.ok(scope.includes(`\`${surface}\``));
 });

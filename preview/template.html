@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
   <title>{{TITLE}}</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
@@ -13,6 +14,6 @@
   </header>
   <main>{{CONTENT}}</main>
   <script src="./mermaid.min.js"></script>
-  <script>mermaid.initialize({startOnLoad:true,securityLevel:'strict',htmlLabels:false});</script>
+  <script src="./init.js"></script>
 </body>
 </html>
