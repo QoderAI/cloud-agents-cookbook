@@ -93,7 +93,7 @@ async function validateArticle(root, articlePath, contracts) {
   const h2Names = new Set(h2.map((heading) => heading.text));
   for (const section of required) if (!h2Names.has(section)) push(errors, 'BODY-006', file, `Missing required section '## ${section}'.`);
   if (/\b(?:Table of Contents|目录)\b/i.test(analysis.prose) && /\[[^\]]+\]\(#[^)]+\)/.test(analysis.prose)) push(errors, 'BODY-010', file, 'Do not add a manual table of contents.');
-  if (/\[\[(?:REPLACE|REMOVE-OR-REPLACE)|replace-with-|REPLACE_WITH_/i.test(body)) push(errors, 'BODY-007', file, 'Template placeholder must be replaced.');
+  if (/\[\[(?:REPLACE|REMOVE-OR-REPLACE)|replace-with-|REPLACE_WITH_|\{\{[A-Z0-9_]+\}\}/i.test(body)) push(errors, 'BODY-007', file, 'Template placeholder must be replaced.');
 
   for (const fence of analysis.fences) {
     if (!fence.language) push(errors, 'RENDER-004', file, 'Every fenced code block must declare a language.', fence.startLine);

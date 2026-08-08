@@ -76,6 +76,11 @@ test('rejects platform-generated metadata', async () => {
   assert.ok(rules(result).has('META-017'));
 });
 
+test('rejects unreplaced template tokens', async () => {
+  const result = await validateMutation((source) => `${source}\n\n{{SECTION_CONTENT}}\n`);
+  assert.ok(rules(result).has('BODY-007'));
+});
+
 test('rejects video links', async () => {
   const result = await validateMutation((source) => `${source}\n\n[Watch](https://www.youtube.com/watch?v=example)\n`);
   assert.ok(rules(result).has('LINK-007'));
