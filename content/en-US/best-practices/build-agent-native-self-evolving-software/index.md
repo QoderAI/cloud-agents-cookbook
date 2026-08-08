@@ -25,7 +25,7 @@ What changes when an Agent is not an assistant added to a product, but the engin
 
 The transferable pattern is **two loops, one product**. Both loops use long-running QCA resources, versioned task definitions, Sessions and Memory where appropriate, tools, and isolated execution. Their authority is different. Deterministic application controls govern the Cat's externally visible effects; CI, permission policy, human approval, canaries, observation, and rollback govern the Creator's changes. Those controls constrain the Agents. They do not replace the reasoning and work performed by either Agent system.
 
-This article separates three kinds of claims. The inspected Me&Me repository contains an implemented Cat/Forward pattern and concrete Creator inbox, task, and governance patterns. The Me&Me target architecture runs both the Cat and Creator on QCA; some recurring Creator, real-credential, end-to-end, and production rollout work was still incomplete in the inspected snapshot. The recommendations below generalize the architecture for other QCA products rather than presenting every target-state detail as already deployed.
+This article separates three kinds of claims. The inspected Me&Me repository contains an implemented Cat resource-provisioning pattern and concrete Creator inbox, task, and governance patterns. The Me&Me target architecture runs both the Cat and Creator on QCA; some recurring Creator, real-credential, end-to-end, and production rollout work was still incomplete in the inspected snapshot. The recommendations below generalize the architecture for other QCA products rather than presenting every target-state detail as already deployed.
 
 ## Use cases and boundaries
 
@@ -81,7 +81,7 @@ Treat Agent provisioning as a versioned application contract rather than a seque
 | Memory | Preferences, history, and interpretation | Scope to one identity; make correctable; never treat as final truth |
 | Narrow token | Access to Agent-facing application endpoints | Rotate server-side; deny unrelated services and operations |
 
-In the inspected Me&Me implementation, ensure-style provisioning establishes stable Forward resources, a schedule can reuse a bounded Session, and a narrow token limits the Cat to the intended world-reading and travel-reporting surface. The application still validates each report before it becomes a product fact.
+In the inspected Me&Me implementation, ensure-style provisioning establishes stable Cat resources, a schedule can reuse a bounded Session, and a narrow token limits the Cat to the intended world-reading and travel-reporting surface. The application still validates each report before it becomes a product fact.
 
 The runtime model is intentionally asymmetric: the Agent owns open-ended behavior, while the application owns eligibility and effects.
 
@@ -123,7 +123,7 @@ The Creator is itself a first-class QCA Agent system—not a CI script with an A
 
 Use role separation even if one QCA account hosts the system. An inbox identity collects and sanitizes signals. A development identity receives one accepted item and works in an isolated checkout. A review identity examines the exact revision and cannot alter it. A release identity can act only on an approved immutable bundle. A monitor identity gathers health evidence and can request a narrow rollback or freeze. No identity approves its own work, and production approval remains a human or deterministic policy decision.
 
-Classify every change before tools are granted. A practical scale is L0 for data-only changes, L1 for versioned configuration, Templates, tasks, or documentation, L2 for code, migrations, or runtime behavior, and L3 for governance or security boundaries. The highest affected level wins. Higher levels require stronger review, broader tests, smaller canaries, and more explicit human approval.
+Classify every change before tools are granted, using blast radius, reversibility, sensitivity, and execution effect rather than file type. L0 is limited to non-sensitive, reversible, non-production data with no executable side effect. L1 covers low-risk, versioned documentation, configuration, Templates, or tasks that do not expand authority and can be rolled back cleanly. L2 covers code, migrations, runtime behavior, production data, or sensitive and bulk-data operations that require controlled execution. L3 covers governance or security boundaries, permission expansion, destructive or irreversible operations, and changes with a broad blast radius. A nominally data-only change is therefore L2 or L3 when it affects production, sensitive records, or destructive actions. The highest risk dimension wins; higher levels require stronger review, broader tests, smaller canaries, and more explicit human approval.
 
 The Creator's state machine must stop as clearly as it starts:
 
@@ -131,19 +131,31 @@ The Creator's state machine must stop as clearly as it starts:
 stateDiagram-v2
     [*] --> Proposed
     Proposed --> Accepted
+    Proposed --> Rejected
     Accepted --> InProgress
+    Accepted --> Cancelled
     InProgress --> Reviewed
+    InProgress --> Failed
     Reviewed --> Staging
+    Reviewed --> Rejected
     Staging --> Observing
+    Staging --> Failed
     Observing --> Verified
     Observing --> RolledBack
     InProgress --> Frozen
     Staging --> Frozen
     Frozen --> Recovering
+    Frozen --> Cancelled
     Recovering --> InProgress
+    Recovering --> Failed
+    Verified --> [*]
+    RolledBack --> [*]
+    Rejected --> [*]
+    Cancelled --> [*]
+    Failed --> [*]
 ```
 
-Every transition should emit structured evidence: proposal and task IDs, task version, identity and Session reference, branch and exact revision, test results, artifacts, independent review, deployment reference, observation window, and final status. Missing evidence means incomplete, not “probably successful.” A freeze state blocks new implementation and release Sessions while preserving evidence for recovery.
+Every transition should emit structured evidence: proposal and task IDs, task version, identity and Session reference, branch and exact revision, test results, artifacts, independent review, deployment reference, observation window, and final status. Rejection covers failed triage or review; failure covers validation, test, staging, or recovery failure; cancellation records an authorized stop. Each outcome terminates explicitly. Missing evidence means incomplete, not “probably successful.” A freeze state blocks new implementation and release Sessions while preserving evidence for recovery.
 
 ![The Me&Me software evolution loop from user feedback through review, release, and verification](./assets/meandme-self-evolution.png)
 
