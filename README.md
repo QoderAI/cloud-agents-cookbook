@@ -44,6 +44,8 @@ Generated files are written to `dist/` and are not committed.
 - [Automated checks](./docs/automated-checks.md)
 - [Repository governance](./docs/repository-governance.md)
 - [Frontend integration contract](./docs/frontend-integration-contract.md)
+- [Maintainer repository settings](./docs/maintainers/repository-settings.md)
+- [Release and rollback](./docs/maintainers/release-and-rollback.md)
 
 ## License
 

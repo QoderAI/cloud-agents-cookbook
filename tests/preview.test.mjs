@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildPreview } from '../scripts/build-preview.mjs';
@@ -23,4 +23,5 @@ test('renders the supported content contract into an accessible static preview',
   assert.match(html, /<pre class="mermaid">/);
   assert.match(html, /<code class="language-bash">/);
   assert.doesNotMatch(html, /<script[^>]+src="https?:\/\//);
+  await access(path.join(outDir, 'THIRD_PARTY_NOTICES.md'));
 });

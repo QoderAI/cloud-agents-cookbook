@@ -49,6 +49,7 @@ export async function buildPreview(root = process.cwd(), options = {}) {
   await mkdir(outDir, { recursive: true });
   await cp(path.join(contractRoot, 'preview', 'styles.css'), path.join(outDir, 'styles.css'));
   await cp(path.join(contractRoot, 'node_modules', 'mermaid', 'dist', 'mermaid.min.js'), path.join(outDir, 'mermaid.min.js'));
+  await cp(path.join(contractRoot, 'THIRD_PARTY_NOTICES.md'), path.join(outDir, 'THIRD_PARTY_NOTICES.md'));
 
   for (const item of result.items) {
     const sourceAssets = path.join(root, path.dirname(item.sourcePath), 'assets');

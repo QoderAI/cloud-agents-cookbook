@@ -44,6 +44,8 @@ npm run preview
 - [自动检查](./docs/automated-checks.md)
 - [仓库治理](./docs/repository-governance.md)
 - [前端接入契约](./docs/frontend-integration-contract.md)
+- [仓库设置清单](./docs/maintainers/repository-settings.md)
+- [发布与回退](./docs/maintainers/release-and-rollback.md)
 
 ## 许可证
 
