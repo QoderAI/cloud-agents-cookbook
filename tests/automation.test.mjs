@@ -63,3 +63,14 @@ test('the publication archive excludes the pull-request preview', async () => {
   const source = await readFile(path.join(repoRoot, '.github', 'workflows', 'publish.yml'), 'utf8');
   assert.match(source, /name: Rebuild publication-only bundle\n\s+run: npm run build\n\s+- name: Package content bundle/);
 });
+
+test('the public dependency lock uses only npmjs.org and exact top-level versions', async () => {
+  const packageSource = await readFile(path.join(repoRoot, 'package.json'), 'utf8');
+  const lockSource = await readFile(path.join(repoRoot, 'package-lock.json'), 'utf8');
+  const packageJson = JSON.parse(packageSource);
+
+  assert.doesNotMatch(lockSource, /registry\.anpm|alibaba-inc\.com/i);
+  for (const [name, version] of Object.entries(packageJson.dependencies)) {
+    assert.match(version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, `${name} must use an exact version`);
+  }
+});
