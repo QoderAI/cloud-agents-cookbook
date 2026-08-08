@@ -1,0 +1,10 @@
+# License scope
+
+This repository uses two licenses.
+
+1. Files under `content/`, `templates/`, and `docs/`, plus `README.md`, `README.zh-CN.md`, `CONTRIBUTING.md`, `CONTRIBUTING.zh-CN.md`, and content images, are licensed under the Creative Commons Attribution 4.0 International License. The complete terms are in `LICENSES/CC-BY-4.0.txt`.
+2. Files under `scripts/`, `tests/`, `.github/workflows/`, and `preview/`, plus `package.json` and executable standalone examples, are licensed under the Apache License 2.0. The complete terms are in `LICENSES/Apache-2.0.txt`.
+
+JSON Schemas and machine-readable configuration are licensed under Apache-2.0 so downstream tooling can implement the contract.
+
+If a file carries an SPDX identifier, that identifier controls. If no identifier is present, the directory scope above controls. Third-party material must retain its own attribution and license notice.
