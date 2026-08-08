@@ -2,6 +2,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { symlink, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { validateRepository } from '../scripts/validate.mjs';
 import { makeFixtureWorkspace, repoRoot } from './helpers.mjs';
 
@@ -84,4 +86,28 @@ test('rejects unreplaced template tokens', async () => {
 test('rejects video links', async () => {
   const result = await validateMutation((source) => `${source}\n\n[Watch](https://www.youtube.com/watch?v=example)\n`);
   assert.ok(rules(result).has('LINK-007'));
+});
+
+test('rejects non-HTTPS and active link schemes', async () => {
+  const result = await validateMutation((source) => `${source}\n\n[Unsafe](javascript:alert) and [local](../other.md).\n`);
+  assert.ok(rules(result).has('LINK-002'));
+});
+
+test('rejects a cover image that does not exist', async () => {
+  const result = await validateMutation((source) => source.replace('locale: zh-CN', 'locale: zh-CN\ncover: ./assets/missing.png'));
+  assert.ok(rules(result).has('RENDER-008'));
+});
+
+test('rejects unexpected files inside the content tree', async () => {
+  const root = await makeFixtureWorkspace();
+  await writeFile(path.join(root, 'content', 'zh-CN', 'recipes', 'recover-a-session', 'payload.js'), 'console.log("unexpected");\n');
+  const result = await validateRepository(root, { contractRoot: repoRoot });
+  assert.ok(rules(result).has('FILE-003'));
+});
+
+test('rejects symbolic links inside the content tree', async () => {
+  const root = await makeFixtureWorkspace();
+  await symlink('index.md', path.join(root, 'content', 'zh-CN', 'recipes', 'recover-a-session', 'linked.md'));
+  const result = await validateRepository(root, { contractRoot: repoRoot });
+  assert.ok(rules(result).has('FILE-008'));
 });

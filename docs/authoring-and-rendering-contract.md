@@ -20,7 +20,7 @@ Tables require a header. Task lists render read-only. External links use `https:
 
 ## Images
 
-Use `![meaningful alt text](./assets/file.png)`. Images must be local PNG, JPEG, or WebP files no larger than 5 MB. Remote images, absolute paths, root paths, `../` cross-article paths, SVG, and unreferenced assets are rejected.
+Use `![meaningful alt text](./assets/file.png)`. Images must be local PNG, JPEG, or WebP files no larger than 5 MB. Remote images, absolute paths, root paths, `../` cross-article paths, SVG, missing or unreferenced assets, arbitrary extra files, and symbolic links are rejected.
 
 ## Footnotes
 

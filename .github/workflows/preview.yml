@@ -40,8 +40,16 @@ jobs:
       - name: Install trusted dependencies
         working-directory: trusted
         run: npm ci --ignore-scripts
-      - name: Build static preview
+      - name: Build content contribution preview with trusted tooling
+        if: ${{ !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         run: node trusted/scripts/build-preview.mjs --root submission --contract-root trusted --out-dir artifacts/preview
+      - name: Install proposed dependencies
+        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        working-directory: submission
+        run: npm ci --ignore-scripts
+      - name: Build preview with proposed infrastructure
+        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        run: node submission/scripts/build-preview.mjs --root submission --contract-root submission --out-dir artifacts/preview
       - name: Upload preview artifact
         id: preview-artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -54,7 +54,7 @@ dist/                    generated output; never committed
 
 Validation is deterministic and runs locally with `npm run check` and in GitHub Actions for every pull request. A public content contribution may only change `content/**`. Repository infrastructure changes are handled in separate maintainer pull requests.
 
-The pull-request workflow checks out trusted tooling from the default branch and treats the contributor tree strictly as input data. It uses read-only permissions, receives no secrets, and does not execute contributor-supplied scripts. Required status checks block merge when validation, tests, DCO, or preview generation fails.
+For public content pull requests, the workflow checks out trusted tooling from the default branch and treats the contributor tree strictly as input data. It uses read-only permissions, receives no secrets, and does not execute contributor-supplied scripts. Infrastructure changes are restricted to repository owners, organization members, and collaborators; those trusted pull requests additionally install, test, and exercise the proposed tooling, still without secrets or write permissions. Required status checks block merge when validation, tests, DCO, or preview generation fails.
 
 Automated checks cover metadata schema, global slug uniqueness, path consistency, taxonomy, article structure, required sections, images, links, Markdown fences, footnotes, Mermaid syntax and safety, unsupported elements, common secret patterns, configuration references, and deterministic catalog generation.
 
@@ -64,7 +64,7 @@ Automated checks do not decide factual accuracy, publication value, copyright ow
 
 Pull-request validation builds a self-contained static preview artifact and a normalized catalog artifact. The preview proves content parsing and supported rendering but does not claim pixel parity with the product frontend. Product-fidelity preview is an external integration described by `docs/frontend-integration-contract.md`.
 
-On a push to `main`, the repository re-runs the complete check and creates an immutable content bundle containing the catalog, normalized article data, copied assets, source commit, and checksums. The workflow then calls the configured publication webhook. The workflow fails clearly if the production integration has not been configured; it never reports a successful publication without an acknowledged response.
+On a push to `main`, the repository re-runs the complete check and creates an immutable content bundle containing the catalog, normalized article data, copied assets, source commit, and checksums. Until the website integration is ready, the workflow records that dispatch is disabled and keeps the verified artifact for inspection. After maintainers explicitly set `COOKBOOK_PUBLISH_ENABLED=true`, every run requires the publication credentials and a successful downstream acknowledgement; otherwise the workflow fails and the last successful website version remains in service.
 
 ## Licensing and contribution terms
 

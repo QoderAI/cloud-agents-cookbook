@@ -53,10 +53,26 @@ jobs:
       - name: Test trusted tooling
         working-directory: trusted
         run: npm test
-      - name: Validate submission
+      - name: Validate content contribution with trusted tooling
+        if: ${{ !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         run: node trusted/scripts/validate.mjs --root submission --contract-root trusted
-      - name: Build normalized catalog
+      - name: Build content contribution catalog with trusted tooling
+        if: ${{ !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         run: node trusted/scripts/build-catalog.mjs --root submission --contract-root trusted --out-dir artifacts/catalog --source-commit "$HEAD_SHA"
+      - name: Install proposed dependencies
+        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        working-directory: submission
+        run: npm ci --ignore-scripts
+      - name: Test proposed infrastructure
+        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        working-directory: submission
+        run: npm test
+      - name: Validate with proposed infrastructure
+        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        run: node submission/scripts/validate.mjs --root submission --contract-root submission
+      - name: Build catalog with proposed infrastructure
+        if: ${{ contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        run: node submission/scripts/build-catalog.mjs --root submission --contract-root submission --out-dir artifacts/catalog --source-commit "$HEAD_SHA"
       - name: Upload catalog artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

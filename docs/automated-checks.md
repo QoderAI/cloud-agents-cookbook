@@ -15,7 +15,7 @@ Required checks block merge. Maintainers should not bypass a failed check; contr
 ## Validation families
 
 - `META`: Frontmatter, Schema version, single author, taxonomy, one-to-five tags, stable unique slug, related content, and platform-generated fields.
-- `FILE`: fixed content path, resource directory, safe filenames, supported formats, 5 MB image limit, and referenced assets.
+- `FILE`: fixed content path, closed file layout, no symbolic links, safe filenames, supported formats, 5 MB image limit, and referenced assets.
 - `BODY`: nonempty body, heading levels, unique headings, type-specific sections, three H2 minimum, no manual TOC, and no template tokens.
 - `RENDER`: fenced language, GFM structures, image alt text, footnotes, Mermaid syntax and safe subset, and unsupported content.
 - `LINK`: HTTPS, no private/internal/local address, no video, and descriptive link text.

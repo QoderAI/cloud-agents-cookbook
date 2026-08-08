@@ -46,3 +46,20 @@ test('workflows pin actions and isolate public pull requests from secrets and wr
     }
   }
 });
+
+test('maintainer infrastructure pull requests exercise the proposed tooling', async () => {
+  const validateSource = await readFile(path.join(repoRoot, '.github', 'workflows', 'validate.yml'), 'utf8');
+  assert.match(validateSource, /name: Install proposed dependencies/);
+  assert.match(validateSource, /working-directory: submission/);
+  assert.match(validateSource, /node submission\/scripts\/validate\.mjs --root submission --contract-root submission/);
+  assert.match(validateSource, /node submission\/scripts\/build-catalog\.mjs --root submission --contract-root submission/);
+
+  const previewSource = await readFile(path.join(repoRoot, '.github', 'workflows', 'preview.yml'), 'utf8');
+  assert.match(previewSource, /name: Install proposed dependencies/);
+  assert.match(previewSource, /node submission\/scripts\/build-preview\.mjs --root submission --contract-root submission/);
+});
+
+test('the publication archive excludes the pull-request preview', async () => {
+  const source = await readFile(path.join(repoRoot, '.github', 'workflows', 'publish.yml'), 'utf8');
+  assert.match(source, /name: Rebuild publication-only bundle\n\s+run: npm run build\n\s+- name: Package content bundle/);
+});

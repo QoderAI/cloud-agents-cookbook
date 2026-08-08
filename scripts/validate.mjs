@@ -9,7 +9,7 @@ import matter from 'gray-matter';
 import { JSDOM } from 'jsdom';
 import { loadContracts, schemaMessages } from './lib/contracts.mjs';
 import { diagnostic, formatDiagnostic } from './lib/diagnostics.mjs';
-import { fileSize, listFiles, relativePortable } from './lib/files.mjs';
+import { fileSize, listFiles, listTreeEntries, relativePortable } from './lib/files.mjs';
 import { allowedCodeLanguages, analyzeMarkdown, extractImages, extractLinks } from './lib/markdown.mjs';
 
 const typeDirectories = { recipe: 'recipes', 'best-practice': 'best-practices', showcase: 'showcases', workshop: 'workshops' };
@@ -137,7 +137,13 @@ async function validateArticle(root, articlePath, contracts) {
       else if (await fileSize(asset) > 5 * 1024 * 1024) push(errors, 'FILE-006', file, `Image '${image.target}' exceeds 5 MB.`);
     }
   }
-  if (metadata.cover) referencedAssets.add(metadata.cover.slice('./assets/'.length));
+  if (metadata.cover) {
+    const assetName = metadata.cover.slice('./assets/'.length);
+    const asset = path.join(articleDirectory, metadata.cover);
+    referencedAssets.add(assetName);
+    if (!await exists(asset)) push(errors, 'RENDER-008', file, `Cover image '${metadata.cover}' does not exist.`);
+    else if (await fileSize(asset) > 5 * 1024 * 1024) push(errors, 'FILE-006', file, `Cover image '${metadata.cover}' exceeds 5 MB.`);
+  }
   const assetsDirectory = path.join(articleDirectory, 'assets');
   for (const asset of await listFiles(assetsDirectory)) {
     const assetName = path.basename(asset);
@@ -146,7 +152,7 @@ async function validateArticle(root, articlePath, contracts) {
   }
 
   for (const link of extractLinks(prose)) {
-    if (/^(?:http:|ftp:|file:)/i.test(link.target)) push(errors, 'LINK-002', file, `External link '${link.target}' must use https://.`);
+    if (!/^https:\/\//i.test(link.target) && !/^#[^\s]+$/u.test(link.target)) push(errors, 'LINK-002', file, `Link '${link.target}' must use https:// or a same-page heading fragment.`);
     if (videoPattern.test(link.target)) push(errors, 'LINK-007', file, `Video link '${link.target}' is not supported.`);
     if (internalPattern.test(link.target)) push(errors, 'LINK-005', file, `Internal link '${link.target}' is not allowed.`);
     if (/^(?:这里|点击|here|click here)$/i.test(link.text)) warnings.push(diagnostic('LINK-004', file, `Use descriptive link text instead of '${link.text}'.`));
@@ -169,7 +175,25 @@ export async function validateRepository(root = process.cwd(), options = {}) {
     if (!validate(contracts.config[configName])) for (const message of schemaMessages(validate)) push(errors, 'CONFIG-001', `config/${configName}.json`, message);
   }
 
-  const articlePaths = (await listFiles(path.join(root, 'content'))).filter((file) => file.endsWith(`${path.sep}index.md`));
+  const contentRoot = path.join(root, 'content');
+  const contentEntries = await listTreeEntries(contentRoot);
+  const articlePaths = [];
+  const articlePattern = /^content\/(?:zh-CN|en-US)\/(?:recipes|best-practices|showcases|workshops)\/[a-z0-9][a-z0-9-]*\/index\.md$/;
+  const assetPattern = /^content\/(?:zh-CN|en-US)\/(?:recipes|best-practices|showcases|workshops)\/[a-z0-9][a-z0-9-]*\/assets\/[a-z0-9][a-z0-9._-]*\.(?:png|jpe?g|webp)$/;
+  const placeholderPattern = /^content\/(?:zh-CN|en-US)\/(?:recipes|best-practices|showcases|workshops)\/\.gitkeep$/;
+  for (const entry of contentEntries) {
+    const file = relativePortable(root, entry.path);
+    if (entry.kind === 'symlink') {
+      push(errors, 'FILE-008', file, 'Symbolic links are not allowed in the content tree.');
+      continue;
+    }
+    if (entry.kind !== 'file') {
+      push(errors, 'FILE-003', file, 'Unsupported filesystem entry in the content tree.');
+      continue;
+    }
+    if (articlePattern.test(file)) articlePaths.push(entry.path);
+    else if (!assetPattern.test(file) && !placeholderPattern.test(file)) push(errors, 'FILE-003', file, 'Only index.md, supported local assets, and type-directory .gitkeep files are allowed.');
+  }
   const items = [];
   for (const articlePath of articlePaths) {
     const result = await validateArticle(root, articlePath, contracts);
