@@ -1,0 +1,39 @@
+#!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+
+import { rm } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { validateRepository } from './validate.mjs';
+import { copyArticleAssets, manifestForDirectory, normalizeItem, writeJson } from './lib/catalog.mjs';
+
+export async function buildCatalog(root = process.cwd(), options = {}) {
+  const contractRoot = options.contractRoot ?? root;
+  const outDir = options.outDir ?? path.join(root, 'dist');
+  const sourceCommit = options.sourceCommit ?? process.env.GITHUB_SHA ?? 'working-tree';
+  const result = await validateRepository(root, { contractRoot });
+  if (result.errors.length) throw new Error(`Cannot build catalog: ${result.errors.length} validation error(s).`);
+
+  await rm(outDir, { recursive: true, force: true });
+  const normalized = await Promise.all(result.items.map((item) => normalizeItem(root, item)));
+  normalized.sort((a, b) => `${a.locale}/${a.slug}`.localeCompare(`${b.locale}/${b.slug}`));
+  const catalog = { schema_version: 1, source_commit: sourceCommit, items: normalized };
+  await writeJson(path.join(outDir, 'catalog.json'), catalog);
+
+  for (let index = 0; index < result.items.length; index += 1) {
+    const item = result.items[index];
+    const metadata = normalized.find((candidate) => candidate.slug === item.metadata.slug);
+    await writeJson(path.join(outDir, 'content', metadata.locale, `${metadata.slug}.json`), { ...metadata, body: item.body });
+    await copyArticleAssets(root, item.sourcePath, outDir, metadata);
+  }
+  const manifest = await manifestForDirectory(outDir, sourceCommit);
+  await writeJson(path.join(outDir, 'manifest.json'), manifest);
+  return { catalog, manifest, outDir };
+}
+
+async function runCli() {
+  const result = await buildCatalog();
+  console.log(`Built ${result.catalog.items.length} content item(s) in ${result.outDir}.`);
+}
+
+if (path.resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) runCli().catch((error) => { console.error(error); process.exitCode = 1; });
