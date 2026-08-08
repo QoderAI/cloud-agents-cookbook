@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { access, readFile } from 'node:fs/promises';
+import { isIP } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -19,19 +20,37 @@ const internalPattern = /(?:alibaba-inc\.com|alibabacloud\.com\.cn|localhost|127
 const secretPattern = /(?:-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\bAKIA[0-9A-Z]{16}\b|\bgh[pousr]_[A-Za-z0-9]{20,}\b|\bsk-[A-Za-z0-9_-]{20,}\b)/;
 let mermaidPromise;
 
-function isPrivateHostname(value) {
-  const hostname = value.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
-  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local') || hostname.endsWith('.internal')) return true;
-  if (hostname.includes(':')) {
-    if (hostname === '::' || hostname === '::1' || hostname.startsWith('fc') || hostname.startsWith('fd') || /^fe[89ab]/.test(hostname)) return true;
-    if (hostname.startsWith('::ffff:')) return isPrivateHostname(hostname.slice('::ffff:'.length));
-    return false;
-  }
-  const octets = hostname.split('.').map(Number);
-  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return false;
+function privateIpv4(octets) {
   const [first, second] = octets;
   return first === 0 || first === 10 || first === 127 || (first === 100 && second >= 64 && second <= 127)
     || (first === 169 && second === 254) || (first === 172 && second >= 16 && second <= 31) || (first === 192 && second === 168);
+}
+
+function ipv6Words(value) {
+  if (isIP(value) !== 6) return null;
+  const [leftSource, rightSource = ''] = value.split('::');
+  const parse = (source) => source ? source.split(':').filter(Boolean).map((part) => Number.parseInt(part, 16)) : [];
+  const left = parse(leftSource);
+  const right = parse(rightSource);
+  const omitted = 8 - left.length - right.length;
+  if ((value.includes('::') && omitted < 1) || (!value.includes('::') && omitted !== 0)) return null;
+  return [...left, ...Array(omitted).fill(0), ...right];
+}
+
+function isPrivateHostname(value) {
+  const hostname = value.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+  if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local') || hostname.endsWith('.internal')) return true;
+  if (isIP(hostname) === 4) return privateIpv4(hostname.split('.').map(Number));
+  const words = ipv6Words(hostname);
+  if (!words) return false;
+  if ((words[0] & 0xfe00) === 0xfc00 || (words[0] & 0xffc0) === 0xfe80) return true;
+  const compatiblePrefix = words.slice(0, 6).every((word) => word === 0);
+  const mappedPrefix = words.slice(0, 5).every((word) => word === 0) && words[5] === 0xffff;
+  if (compatiblePrefix || mappedPrefix) {
+    const octets = [words[6] >> 8, words[6] & 0xff, words[7] >> 8, words[7] & 0xff];
+    return privateIpv4(octets);
+  }
+  return false;
 }
 
 async function parseMermaid(diagram) {
