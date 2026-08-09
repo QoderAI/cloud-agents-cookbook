@@ -24,17 +24,16 @@ The directory mapping is `recipe` → `recipes`, `best-practice` → `best-pract
 
 Use one `author`, one category, and one to five approved tags. Images must be PNG, JPEG, or WebP, at most 5 MB each, and referenced as `./assets/file.png`. Do not set reading time, table of contents, publication time, update time, or Git contributor fields.
 
-## Check locally
+## Optional local check
 
-Node.js 20 or later is required.
+Local validation is recommended for faster feedback, but it is not required to open a pull request. If Node.js 20 or later is available, run:
 
 ```bash
-npm ci
+npm ci --ignore-scripts
 npm run check
-npm run preview
 ```
 
-Open `dist/preview/index.html` to inspect the generated content preview.
+Open `dist/preview/index.html` to inspect the generated content preview. If Node.js is not available, open the pull request directly: the required GitHub Actions checks will run automatically and provide a preview artifact. Review either the local or Actions-generated preview before merge.
 
 ## Sign commits
 

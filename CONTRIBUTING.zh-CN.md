@@ -24,17 +24,16 @@ content/<locale>/<type-directory>/<slug>/
 
 每篇内容只能填写一个 `author`、一个主分类和一至五个规定标签。图片只能使用不超过 5 MB 的 PNG、JPEG 或 WebP，并通过 `./assets/file.png` 引用。不要填写阅读时长、目录、发布时间、更新时间或 Git 贡献者信息。
 
-## 本地检查
+## 可选的本地检查
 
-需要 Node.js 20 或更高版本。
+建议在本地运行检查，以便更快发现问题，但创建 PR 前不强制执行。如果本地有 Node.js 20 或更高版本，请运行：
 
 ```bash
-npm ci
+npm ci --ignore-scripts
 npm run check
-npm run preview
 ```
 
-打开 `dist/preview/index.html` 检查生成的内容预览。
+打开 `dist/preview/index.html` 检查生成的内容预览。如果没有 Node.js，可以直接创建 PR；必需的 GitHub Actions 检查会自动运行并提供预览产物。合并前需要查看本地或 GitHub Actions 生成的任一预览。
 
 ## 签署 commit
 
