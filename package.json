@@ -10,10 +10,11 @@
   "scripts": {
     "test": "node --test",
     "validate": "node scripts/validate.mjs",
+    "validate:demos": "node scripts/validate-demos.mjs",
     "build": "node scripts/build-catalog.mjs",
     "preview": "node scripts/build-preview.mjs",
     "links": "node scripts/check-links.mjs",
-    "check": "npm test && npm run validate && npm run links && npm run build && npm run preview"
+    "check": "npm test && npm run validate && npm run validate:demos && npm run links && npm run build && npm run preview"
   },
   "dependencies": {
     "ajv": "8.20.0",

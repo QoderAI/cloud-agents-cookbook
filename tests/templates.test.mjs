@@ -46,6 +46,8 @@ for (const locale of ['zh-CN', 'en-US']) {
       const root = await mkdtemp(path.join(tmpdir(), 'qca-template-test-'));
       const template = await readFile(path.join(repoRoot, 'templates', locale, `${type}.md`), 'utf8');
       assert.doesNotMatch(template, /Replace this|替换为经过验证/);
+      assert.match(template, locale === 'zh-CN' ? /^## 可选：Demo 源码$/m : /^## Optional: Demo source$/m);
+      assert.match(template, /https:\/\/github\.com\/QoderAI\/cloud-agents-cookbook\/tree\/main\/demos\/\{\{SLUG\}\}/);
       const slug = `${type}-template-example`;
       const destination = path.join(root, 'content', locale, directory, slug);
       await mkdir(destination, { recursive: true });

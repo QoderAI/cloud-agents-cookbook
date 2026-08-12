@@ -50,6 +50,8 @@ related:
 
 The platform generates reading time, table of contents, first publication time, update time, repository path, source commit, and contributor history. Publication timestamps come from trusted main-branch squash-commit committer dates, never contributor-selected author dates. These fields are rejected when supplied in Frontmatter.
 
+Demo association is not Metadata. When an article has bound source under `demos/<slug>/`, the relationship is expressed by the exact GitHub link in the article body and governed by the [Demo Contract](./demo-contract.md). Do not add `demo`, `demo_url`, or equivalent Frontmatter fields.
+
 The file path, locale, type directory, and slug must agree. Published slugs are stable; a changed slug requires a maintainer-owned redirect entry.
 
 Breaking field or meaning changes require a new Schema version and a migration of existing content. New optional fields may remain in version 1 when they preserve compatibility.

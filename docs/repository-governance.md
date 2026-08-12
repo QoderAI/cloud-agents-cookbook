@@ -4,7 +4,7 @@
 
 - Contributors propose content and respond to review.
 - Content reviewers assess structure, clarity, sources, public scope, and duplication.
-- Specialist reviewers assess product facts, code, architecture, security, or regulated topics.
+- Specialist reviewers assess product facts, Demo source, architecture, security, or regulated topics.
 - Maintainers own configuration, required checks, preview approval, merge, publication incidents, and rollback.
 
 Automation validates contracts but never replaces human review of facts, authorization, copyright, customer confidentiality, or publication value.
@@ -16,7 +16,13 @@ Automation validates contracts but never replaces human review of facts, authori
 - `config/redirects.json`: permanent old-slug to current-slug mappings.
 - `config/content-lifecycle.json`: deprecated or archived content and its user-facing explanation.
 
-Ordinary content pull requests only modify `content/**`. Changes to Schemas, configuration, templates, tooling, workflows, or governance require a separate maintainer pull request and full-repository compatibility validation.
+Ordinary contribution pull requests modify valid article paths under `content/**` and, when applicable, strongly bound source under `demos/<slug>/**`. Changes to the Demo directory entry, contracts, Schemas, configuration, templates, tooling, workflows, or governance require a separate Maintainer pull request and full-repository compatibility validation.
+
+## Demo ownership and lifecycle
+
+A Demo is optional but never standalone. `demos/<slug>/` is owned by the single article with the same slug, and that article contains the stable GitHub source link. A translation may link the same Demo without copying or owning it.
+
+Introducing or removing a Demo requires changing its owner article in the same pull request. Updating an existing bound Demo does not require a no-op article edit. Maintainers review the Demo README, source, claims, cleanup, costs, permissions, side effects, public scope, licenses, and third-party attribution manually; automation never executes it.
 
 ## Merge and publication
 
@@ -29,3 +35,5 @@ The publication workflow must preserve the last successful version when validati
 Update an article in its existing directory and retain its slug. When a slug must change, add a redirect in the same maintainer pull request. To stop maintaining content while keeping its history available, add a lifecycle entry with a public reason and optional replacement. Removing or restoring content also requires a pull request.
 
 Rollback uses a Git revert followed by the same main-branch publication workflow. Force pushes and history rewrites are prohibited.
+
+Article and Demo changes normally roll back together through a reviewed revert. Because Demo source never enters the active Cookbook bundle, an urgent risky-source incident may require removing GitHub access and revoking credentials before the normal revert and publication audit trail are completed.

@@ -2,11 +2,24 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdtemp, readFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildPreview } from '../scripts/build-preview.mjs';
-import { makeFixtureWorkspace, repoRoot } from './helpers.mjs';
+import { makeDemoFixtureWorkspace, makeFixtureWorkspace, repoRoot } from './helpers.mjs';
+
+async function relativeFiles(root) {
+  const files = [];
+  async function walk(directory) {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) await walk(full);
+      else files.push(path.relative(root, full).replaceAll(path.sep, '/'));
+    }
+  }
+  await walk(root);
+  return files.sort();
+}
 
 test('renders the supported content contract into an accessible static preview', async () => {
   const root = await makeFixtureWorkspace();
@@ -38,4 +51,16 @@ test('namespaces and de-duplicates rendered heading identifiers', async () => {
   assert.match(html, /id="recover-a-session--foo"/);
   assert.match(html, /id="recover-a-session--foo-1"/);
   assert.match(html, /href="#recover-a-session--foo-1"/);
+});
+
+test('excludes Demo source from the generated static preview', async () => {
+  const root = await makeDemoFixtureWorkspace();
+  const outDir = await mkdtemp(path.join(tmpdir(), 'qca-preview-demo-'));
+  await buildPreview(root, { contractRoot: repoRoot, outDir });
+  const files = await relativeFiles(outDir);
+  const html = await readFile(path.join(outDir, 'index.html'), 'utf8');
+
+  assert.ok(files.every((file) => !file.includes('demos/')));
+  assert.ok(files.every((file) => !file.endsWith('src/index.js')));
+  assert.doesNotMatch(html, /console\.log\("demo source"\)/);
 });

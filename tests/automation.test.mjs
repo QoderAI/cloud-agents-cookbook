@@ -19,6 +19,12 @@ test('DCO check requires a valid Signed-off-by trailer in every commit', () => {
 
 test('external content contributions cannot change repository infrastructure', () => {
   assert.deepEqual(checkContributionScope(['content/zh-CN/recipes/example/index.md'], { allowInfrastructure: false }), []);
+  assert.deepEqual(checkContributionScope([
+    'content/zh-CN/recipes/recover-a-session/index.md',
+    'demos/recover-a-session/README.md',
+    'demos/recover-a-session/src/index.js'
+  ], { allowInfrastructure: false }), []);
+  assert.deepEqual(checkContributionScope(['demos/README.md', 'demos/Bad_Slug/source.js'], { allowInfrastructure: false }), ['demos/README.md', 'demos/Bad_Slug/source.js']);
   assert.deepEqual(checkContributionScope(['content/zh-CN/recipes/example/index.md', 'scripts/validate.mjs'], { allowInfrastructure: false }), ['scripts/validate.mjs']);
   assert.deepEqual(checkContributionScope(['scripts/validate.mjs'], { allowInfrastructure: true }), []);
 });
@@ -51,12 +57,32 @@ test('maintainer infrastructure pull requests exercise the proposed tooling', as
   const validateSource = await readFile(path.join(repoRoot, '.github', 'workflows', 'validate.yml'), 'utf8');
   assert.match(validateSource, /name: Install proposed dependencies/);
   assert.match(validateSource, /working-directory: submission/);
+  assert.match(validateSource, /node submission\/scripts\/check-demo-changes\.mjs --base trusted --candidate submission --files changed-files\.txt/);
+  assert.match(validateSource, /node submission\/scripts\/validate-demos\.mjs --root submission/);
   assert.match(validateSource, /run: npm run check/);
   assert.match(validateSource, /node submission\/scripts\/build-catalog\.mjs --root submission --contract-root submission/);
 
   const previewSource = await readFile(path.join(repoRoot, '.github', 'workflows', 'preview.yml'), 'utf8');
   assert.match(previewSource, /name: Install proposed dependencies/);
   assert.match(previewSource, /node submission\/scripts\/build-preview\.mjs --root submission --contract-root submission/);
+});
+
+test('trusted automation validates Demo source as data without executing it', async () => {
+  const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
+  assert.equal(packageJson.scripts['validate:demos'], 'node scripts/validate-demos.mjs');
+  assert.match(packageJson.scripts.check, /npm run validate:demos/);
+
+  const validateSource = await readFile(path.join(repoRoot, '.github', 'workflows', 'validate.yml'), 'utf8');
+  assert.match(validateSource, /node trusted\/scripts\/check-demo-changes\.mjs --base trusted --candidate submission --files changed-files\.txt/);
+  assert.match(validateSource, /node trusted\/scripts\/validate-demos\.mjs --root submission/);
+  assert.match(validateSource, /node submission\/scripts\/check-demo-changes\.mjs --base trusted --candidate submission --files changed-files\.txt/);
+  assert.match(validateSource, /node submission\/scripts\/validate-demos\.mjs --root submission/);
+
+  const automationSource = (await Promise.all([
+    readFile(path.join(repoRoot, 'package.json'), 'utf8'),
+    ...['validate.yml', 'preview.yml', 'publish.yml', 'dco.yml'].map((name) => readFile(path.join(repoRoot, '.github', 'workflows', name), 'utf8'))
+  ])).join('\n');
+  assert.doesNotMatch(automationSource, /working-directory:\s*submission\/demos|npm\s+--prefix\s+demos|docker\s+build|make\s+(?:-[^\s]+\s+)*demos/i);
 });
 
 test('forks always use trusted tooling and pull requests validate the synthetic merge tree', async () => {
@@ -81,6 +107,8 @@ test('publication secrets are reachable only from a push to main', async () => {
 test('the publication archive excludes the pull-request preview', async () => {
   const source = await readFile(path.join(repoRoot, '.github', 'workflows', 'publish.yml'), 'utf8');
   assert.match(source, /name: Rebuild publication-only bundle\n\s+run: npm run build\n\s+- name: Package content bundle/);
+  assert.match(source, /tar -czf cookbook-content\.tgz dist/);
+  assert.doesNotMatch(source, /tar[^\n]*(?:demos|\s\.\s*$)/m);
 });
 
 test('the public dependency lock uses only npmjs.org and exact top-level versions', async () => {
@@ -102,4 +130,17 @@ test('the repository vendors complete license texts and scopes every top-level s
   assert.ok(creativeCommons.length > 15_000 && creativeCommons.includes('Attribution 4.0 International'));
   for (const surface of ['content/', 'templates/', 'docs/', 'scripts/', 'tests/', '.github/', 'preview/', 'schema/', 'config/']) assert.ok(scope.includes(`\`${surface}\``));
   assert.match(scope, /`DCO` retains its own verbatim-copy terms and is not relicensed/);
+});
+
+test('public entry points link the Demo Contract and route Demo review', async () => {
+  for (const file of ['README.md', 'README.zh-CN.md', 'CONTRIBUTING.md', 'CONTRIBUTING.zh-CN.md']) {
+    const source = await readFile(path.join(repoRoot, file), 'utf8');
+    assert.match(source, /\.\/docs\/demo-contract\.md/, `${file} must link the Demo Contract`);
+  }
+  const license = await readFile(path.join(repoRoot, 'LICENSE'), 'utf8');
+  assert.match(license, /`demos\/`/);
+  const codeowners = await readFile(path.join(repoRoot, '.github', 'CODEOWNERS'), 'utf8');
+  assert.match(codeowners, /^\/demos\/ @anchenqlw$/m);
+  const proposal = YAML.parse(await readFile(path.join(repoRoot, '.github', 'ISSUE_TEMPLATE', 'content-proposal.yml'), 'utf8'));
+  assert.ok(proposal.body.some((item) => item.id === 'demo'));
 });

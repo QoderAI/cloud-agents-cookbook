@@ -35,3 +35,7 @@ Only `flowchart`, `sequenceDiagram`, and `stateDiagram-v2` are supported. The di
 GitHub Alerts, raw HTML, HTML comments, `<details>`, HTML tables, MDX/JSX components, JavaScript, iframe, forms, audio, video files or links, video platforms, remote images, SVG, mathematical rendering, GeoJSON, TopoJSON, STL, custom anchors, color previews, and interactive state are not supported.
 
 Cookbook pages are read-only. Code copy and full-page Markdown copy do not execute code or save user progress.
+
+## Bound Demo source
+
+An article may contain an ordinary Markdown link to strongly bound source under `demos/<slug>/`. The URL, repository layout, README, safety, licensing, and review rules are defined by the [Demo Contract](./demo-contract.md). Demo source is not rendered or executed inside the article.
