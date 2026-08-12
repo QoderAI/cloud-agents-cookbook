@@ -17,6 +17,14 @@ body:
       options: [zh-CN, en-US]
     validations:
       required: true
+  - type: dropdown
+    id: demo
+    attributes:
+      label: Demo source
+      description: Will this article include strongly bound source under demos/<slug>/ alongside the article pull request?
+      options: [No, Yes]
+    validations:
+      required: true
   - type: textarea
     id: audience
     attributes:

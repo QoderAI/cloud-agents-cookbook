@@ -6,7 +6,7 @@
 
 ## 开始写作前
 
-请阅读 [Metadata 规范](./docs/metadata-contract.md)、[写作与渲染规范](./docs/authoring-and-rendering-contract.md)和 [Taxonomy](./docs/taxonomy.md)，并确定一种内容类型和一种语言。
+请阅读 [Metadata 规范](./docs/metadata-contract.md)、[写作与渲染规范](./docs/authoring-and-rendering-contract.md)、[Demo 规范](./docs/demo-contract.md)和 [Taxonomy](./docs/taxonomy.md)，并确定一种内容类型和一种语言。仅当文章附带源码时需要阅读 Demo 规范。
 
 不接受以下内容：机密资料、客户数据、内网链接、未公开能力、无权使用的素材、视频、GitHub Alerts、原始 HTML、MDX、JavaScript、iframe、外部图片、SVG、互动练习，以及无法形成至少三个 `##` 章节的短内容。
 
@@ -23,6 +23,18 @@ content/<locale>/<type-directory>/<slug>/
 目录对应关系是：`recipe` → `recipes`、`best-practice` → `best-practices`、`showcase` → `showcases`、`workshop` → `workshops`。
 
 每篇内容只能填写一个 `author`、一个主分类和一至五个规定标签。图片只能使用不超过 5 MB 的 PNG、JPEG 或 WebP，并通过 `./assets/file.png` 引用。不要填写阅读时长、目录、发布时间、更新时间或 Git 贡献者信息。
+
+## 可选：附带 Demo 源码
+
+Demo 不是必需项，但不能脱离文章独立投稿。将源码放在与所属文章 slug 完全一致的 `demos/<slug>/`，并在文章正文中链接：
+
+```text
+https://github.com/QoderAI/cloud-agents-cookbook/tree/main/demos/<slug>
+```
+
+Demo 必须提供 `README.md`，包含`对应文章`、`前置条件`、`安装与配置`、`运行`、`验证结果`、`清理资源`和`成本与安全`七个章节。单文件不超过 5 MiB，整个 Demo 不超过 20 MiB。禁止提交真实 `.env`、凭据、客户数据、私有或内网地址、二进制、压缩包、依赖缓存、构建产物、嵌套 Git 元数据或符号链接。
+
+首次增加或删除 Demo 时，必须在同一 PR 中修改所属文章。翻译文章复用同一个 Demo，不复制源码。完整的文件、安全、许可证和生命周期规则见 [Demo 规范](./docs/demo-contract.md)。
 
 ## 可选的本地检查
 
@@ -47,18 +59,18 @@ git commit -s -m "docs: add a session recovery recipe"
 
 ## PR 自动检查
 
-创建 PR 或推送新 commit 后，GitHub Actions 会自动检查投稿范围、DCO、Metadata、Markdown、图片、链接、Mermaid、敏感模式、Catalog 和预览。
+创建 PR 或推送新 commit 后，GitHub Actions 会自动检查投稿范围、DCO、Metadata、Markdown、图片、链接、Mermaid、Demo 绑定与静态安全、敏感模式、Catalog 和预览。
 
-公开 Fork PR 不会获得 Secrets，投稿文件只作为数据被可信工具读取。第一次投稿时，GitHub 可能要求 Maintainer 先批准工作流运行。必需检查失败时不能 Merge。
+公开 Fork PR 不会获得 Secrets，投稿文件只作为数据被可信工具读取。自动化绝不安装、构建、测试、启动或导入 Demo 源码。第一次投稿时，GitHub 可能要求 Maintainer 先批准工作流运行。必需检查失败时不能 Merge。
 
-自动检查不能判断事实是否准确、产品能力是否已经公开、素材授权是否真实、客户是否授权或内容是否值得发布。这些部分由 Maintainer 人工审核，必要时增加专业 Reviewer。
+自动检查不能判断事实是否准确、产品能力是否已经公开、源码能否运行、操作是否安全、素材授权是否真实、客户是否授权或内容是否值得发布。这些部分由 Maintainer 人工审核 Demo README 和源码，必要时增加专业 Reviewer。
 
 ## 审核与发布
 
-请完整填写 PR Template，并说明资料和素材来源。Maintainer 会审核页面预览与正文，只有 Maintainer 可以 Merge。
+请完整填写 PR Template，并说明资料、代码、依赖、数据和素材来源。Maintainer 会审核文章预览、正文以及附带的 Demo 源码，只有 Maintainer 可以 Merge。
 
 Merge 到 `main` 后，仓库会重新构建不可变内容包并调用已配置的发布接口。发布失败时工作流必须失败，线上继续保留上一可用版本。更新、停止维护、重定向、恢复和下线同样通过 PR 完成。
 
 ## 投稿许可证
 
-提交带 DCO 签署的贡献，即表示你同意正文、内容图片、模板和文档按 CC BY 4.0 提交，可执行工具、测试、工作流和独立示例代码按 Apache-2.0 提交，并确认你拥有提交全部素材所需的权利。
+提交带 DCO 签署的贡献，即表示你同意正文、内容图片、模板和文档按 CC BY 4.0 提交，Demo 源码、可执行工具、测试、工作流和独立示例代码按 Apache-2.0 提交，并确认你拥有提交全部文件与素材所需的权利。

@@ -127,3 +127,16 @@ test('the repository vendors complete license texts and scopes every top-level s
   for (const surface of ['content/', 'templates/', 'docs/', 'scripts/', 'tests/', '.github/', 'preview/', 'schema/', 'config/']) assert.ok(scope.includes(`\`${surface}\``));
   assert.match(scope, /`DCO` retains its own verbatim-copy terms and is not relicensed/);
 });
+
+test('public entry points link the Demo Contract and route Demo review', async () => {
+  for (const file of ['README.md', 'README.zh-CN.md', 'CONTRIBUTING.md', 'CONTRIBUTING.zh-CN.md']) {
+    const source = await readFile(path.join(repoRoot, file), 'utf8');
+    assert.match(source, /\.\/docs\/demo-contract\.md/, `${file} must link the Demo Contract`);
+  }
+  const license = await readFile(path.join(repoRoot, 'LICENSE'), 'utf8');
+  assert.match(license, /`demos\/`/);
+  const codeowners = await readFile(path.join(repoRoot, '.github', 'CODEOWNERS'), 'utf8');
+  assert.match(codeowners, /^\/demos\/ @anchenqlw$/m);
+  const proposal = YAML.parse(await readFile(path.join(repoRoot, '.github', 'ISSUE_TEMPLATE', 'content-proposal.yml'), 'utf8'));
+  assert.ok(proposal.body.some((item) => item.id === 'demo'));
+});
