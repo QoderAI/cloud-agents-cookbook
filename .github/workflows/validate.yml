@@ -57,8 +57,10 @@ jobs:
           fi
           node trusted/scripts/check-contribution-scope.mjs "${args[@]}"
       - name: Enforce Demo lifecycle changes with trusted tooling
+        if: ${{ github.event.pull_request.head.repo.full_name != github.repository || !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         run: node trusted/scripts/check-demo-changes.mjs --base trusted --candidate submission --files changed-files.txt
       - name: Validate Demo source as data with trusted tooling
+        if: ${{ github.event.pull_request.head.repo.full_name != github.repository || !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         run: node trusted/scripts/validate-demos.mjs --root submission
       - name: Enforce stable published slugs
         run: node trusted/scripts/check-stable-slugs.mjs --base trusted --candidate submission
@@ -75,6 +77,12 @@ jobs:
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         working-directory: submission
         run: npm ci --ignore-scripts
+      - name: Enforce Demo lifecycle changes with proposed tooling
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        run: node submission/scripts/check-demo-changes.mjs --base trusted --candidate submission --files changed-files.txt
+      - name: Validate Demo source as data with proposed tooling
+        if: ${{ github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
+        run: node submission/scripts/validate-demos.mjs --root submission
       - name: Check proposed infrastructure
         if: ${{ github.event.pull_request.head.repo.full_name == github.repository && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) }}
         working-directory: submission

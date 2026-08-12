@@ -57,6 +57,8 @@ test('maintainer infrastructure pull requests exercise the proposed tooling', as
   const validateSource = await readFile(path.join(repoRoot, '.github', 'workflows', 'validate.yml'), 'utf8');
   assert.match(validateSource, /name: Install proposed dependencies/);
   assert.match(validateSource, /working-directory: submission/);
+  assert.match(validateSource, /node submission\/scripts\/check-demo-changes\.mjs --base trusted --candidate submission --files changed-files\.txt/);
+  assert.match(validateSource, /node submission\/scripts\/validate-demos\.mjs --root submission/);
   assert.match(validateSource, /run: npm run check/);
   assert.match(validateSource, /node submission\/scripts\/build-catalog\.mjs --root submission --contract-root submission/);
 
@@ -73,6 +75,8 @@ test('trusted automation validates Demo source as data without executing it', as
   const validateSource = await readFile(path.join(repoRoot, '.github', 'workflows', 'validate.yml'), 'utf8');
   assert.match(validateSource, /node trusted\/scripts\/check-demo-changes\.mjs --base trusted --candidate submission --files changed-files\.txt/);
   assert.match(validateSource, /node trusted\/scripts\/validate-demos\.mjs --root submission/);
+  assert.match(validateSource, /node submission\/scripts\/check-demo-changes\.mjs --base trusted --candidate submission --files changed-files\.txt/);
+  assert.match(validateSource, /node submission\/scripts\/validate-demos\.mjs --root submission/);
 
   const automationSource = (await Promise.all([
     readFile(path.join(repoRoot, 'package.json'), 'utf8'),
