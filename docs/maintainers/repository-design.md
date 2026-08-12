@@ -12,15 +12,17 @@ The repository owns:
 
 - four content types: Recipe, Best Practice, Showcase, and Workshop;
 - Chinese and English content stored as Markdown plus local assets;
-- one YAML Frontmatter metadata contract and one authoring/rendering contract;
+- one YAML Frontmatter metadata contract, one authoring/rendering contract, and one Demo source contract;
 - controlled taxonomy, featured content, lifecycle, and redirect configuration;
 - automated validation, catalog generation, preview artifacts, DCO checks, and publication dispatch;
+- optional strongly bound Demo source stored on GitHub and statically validated as untrusted data;
 - public contribution, security, licensing, and maintainer documentation.
 
 The repository does not own:
 
 - the Cookbook product UI or its component implementation;
 - interactive execution in content pages;
+- building, testing, deploying, hosting, or certifying submitted Demo source;
 - customer-specific or Alibaba-internal material;
 - the production preview host or deployment endpoint.
 
@@ -40,6 +42,7 @@ Every article has at least three second-level headings and therefore always has 
 
 ```text
 content/                 publishable Markdown and local assets
+demos/                   optional GitHub-only source bound to article slugs
 templates/               four bilingual contributor templates
 schema/                  JSON Schemas for metadata and repository configuration
 config/                  taxonomy, featured, lifecycle, and redirect policy
@@ -52,23 +55,24 @@ dist/                    generated output; never committed
 
 ## Validation architecture
 
-Validation is deterministic and runs locally with `npm run check` and in GitHub Actions for every pull request. A public content contribution may only change `content/**`. Repository infrastructure changes are handled in separate maintainer pull requests.
+Validation is deterministic and runs locally with `npm run check` and in GitHub Actions for every pull request. A public contribution may change valid article paths and `demos/<slug>/**`; repository infrastructure changes are handled in separate Maintainer pull requests.
 
 For public content pull requests, the workflow checks out trusted tooling from the default branch and treats the contributor tree strictly as input data. It uses read-only permissions, receives no secrets, and does not execute contributor-supplied scripts. Infrastructure changes are restricted to repository owners, organization members, and collaborators; those trusted pull requests additionally install, test, and exercise the proposed tooling, still without secrets or write permissions. Required status checks block merge when validation, tests, DCO, or preview generation fails.
 
-Automated checks cover metadata schema, global slug uniqueness, path consistency, taxonomy, article structure, required sections, images, links, Markdown fences, footnotes, Mermaid syntax and safety, unsupported elements, common secret patterns, configuration references, and deterministic catalog generation.
+Automated checks cover metadata schema, global slug uniqueness, path consistency, taxonomy, article structure, required sections, images, links, Markdown fences, footnotes, Mermaid syntax and safety, unsupported elements, common secret patterns, Demo binding and static safety, configuration references, and deterministic catalog generation. Submitted Demo commands and source are never executed.
 
-Automated checks do not decide factual accuracy, publication value, copyright ownership, customer authorization, or whether a statement describes a public product capability. Maintainers review these areas manually and merge approved pull requests.
+Automated checks do not decide factual accuracy, Demo runtime correctness or operational safety, publication value, copyright ownership, customer authorization, or whether a statement describes a public product capability. Maintainers review these areas and Demo source manually and merge approved pull requests.
 
 ## Preview and publication
 
 Pull-request validation builds a self-contained static preview artifact and a normalized catalog artifact. The preview proves content parsing and supported rendering but does not claim pixel parity with the product frontend. Product-fidelity preview is an external integration described by `docs/frontend-integration-contract.md`.
 
-On a push to `main`, the repository re-runs the complete check and creates an immutable content bundle containing the catalog, normalized article data, copied assets, source commit, and checksums. Until the website integration is ready, the workflow records that dispatch is disabled and keeps the verified artifact for inspection. After maintainers explicitly set `COOKBOOK_PUBLISH_ENABLED=true`, every run requires the publication credentials and a successful downstream acknowledgement; otherwise the workflow fails and the last successful website version remains in service.
+On a push to `main`, the repository re-runs the complete check and creates an immutable content bundle containing the catalog, normalized article data, copied content assets, source commit, and checksums. `demos/` is excluded. Until the website integration is ready, the workflow records that dispatch is disabled and keeps the verified artifact for inspection. After maintainers explicitly set `COOKBOOK_PUBLISH_ENABLED=true`, every run requires the publication credentials and a successful downstream acknowledgement; otherwise the workflow fails and the last successful website version remains in service.
 
 ## Licensing and contribution terms
 
 - prose, content images, contributor templates, and documentation: CC BY 4.0;
+- Demo source: Apache License 2.0;
 - validator code, build tooling, workflows, and standalone examples: Apache License 2.0;
 - contributions: Developer Certificate of Origin 1.1 with a `Signed-off-by` trailer in every commit;
 - short code snippets embedded in an article follow the article license; reusable software belongs in a standalone Apache-2.0 example.

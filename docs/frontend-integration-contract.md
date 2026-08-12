@@ -1,6 +1,6 @@
 # Frontend preview and publication integration contract
 
-This repository is the editorial source of truth. The Qoder website or console consumes generated artifacts; it does not maintain a second copy of article metadata or body content.
+This repository is the editorial source of truth. The Qoder website or console consumes generated article artifacts; it does not maintain a second copy of article metadata or body content. Optional source under `demos/` remains a GitHub-only repository surface.
 
 ## Generated bundle
 
@@ -18,6 +18,8 @@ dist/
 `catalog.json` contains normalized Metadata, reading time, TOC, source path, content hash, and available Git timestamps. Article JSON adds the Markdown body. `governance.json` contains the exact taxonomy labels, content-type labels and required sections, featured ordering, redirects, and lifecycle state for the same source commit; consumers must use it instead of hard-coding those rules. `manifest.json` contains Schema version, source commit, and SHA-256 for every generated file except the manifest itself.
 
 Consumers must reject an unsupported Schema version, missing file, checksum mismatch, duplicate slug, or source commit mismatch.
+
+Catalog and preview builders read `content/` only. They do not copy or index `demos/`. Demo files never appear in normalized article JSON, governance data, search input, website assets, `manifest.json`, preview artifacts, or the publication archive. An article may expose the ordinary GitHub link written in its Markdown body; the frontend does not embed or execute the source.
 
 ## Pull-request preview
 
@@ -53,4 +55,4 @@ The receiver returns a 2xx response only after the new content version is durabl
 
 ## Stable URL and copy behavior
 
-The suggested product URL is `https://qoder.com/cloud/cookbook`. Detail URLs use the stable slug. Redirect configuration preserves renamed URLs. The website exposes full-page Markdown copy from the source document and may expose code-block copy; neither action executes code or creates an interactive Cookbook session.
+The suggested product URL is `https://qoder.com/cloud/cookbook`. Detail URLs use the stable slug. Redirect configuration preserves renamed URLs. The website exposes full-page Markdown copy from the source document and may expose code-block copy; neither action executes code, fetches Demo source into the page, or creates an interactive Cookbook session.

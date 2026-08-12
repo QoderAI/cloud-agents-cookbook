@@ -9,6 +9,8 @@
 5. When production dispatch is enabled, the receiver verifies and activates the bundle atomically.
 6. The GitHub run remains the auditable publication record.
 
+When the pull request includes `demos/<slug>/`, the Maintainer also reviews its README, source, permissions, billable operations, cleanup, side effects, public scope, and third-party rights. Demo source remains in GitHub and is not packaged or activated by the publication receiver.
+
 There is no manual import or frontend code release after Merge.
 
 ## Publication failure
@@ -25,6 +27,12 @@ After correcting an external transient failure, re-run the same `Publish content
 4. Confirm the new main-branch publication activates the restored content state.
 
 For urgent public-safety or credential incidents, remove access to the affected content at the website layer first, revoke exposed credentials, preserve evidence privately, and then complete the Git revert and publication audit trail. Never rewrite public Git history as the primary rollback method.
+
+## Demo rollback and urgent removal
+
+Revert an article and its Demo together when both were introduced or changed by the faulty commit. If only an established Demo changed, revert the Demo commit while preserving the owner article and its valid source link.
+
+For an urgent credential, customer-data, or unsafe-source incident, remove public access to the affected Demo and revoke credentials first. Preserve evidence privately, then submit or merge the reviewed removal and update the owner article in the same change. Demo removal does not alter the active Cookbook content bundle until the article change follows the normal publication workflow.
 
 ## Redirect, deprecation, and restoration
 

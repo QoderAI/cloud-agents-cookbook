@@ -34,3 +34,9 @@ locale: en-US
 [[REMOVE-OR-REPLACE: Optional section; remove this heading, instruction, and content when not needed.]]
 
 {{OPTIONAL_CONTENT}}
+
+## Optional: Demo source
+
+[[REMOVE-OR-REPLACE: Keep this section only when the pull request also submits `demos/{{SLUG}}/`; otherwise remove this heading, instruction, and link.]]
+
+[View the Demo source](https://github.com/QoderAI/cloud-agents-cookbook/tree/main/demos/{{SLUG}})
