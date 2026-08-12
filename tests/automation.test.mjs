@@ -19,6 +19,12 @@ test('DCO check requires a valid Signed-off-by trailer in every commit', () => {
 
 test('external content contributions cannot change repository infrastructure', () => {
   assert.deepEqual(checkContributionScope(['content/zh-CN/recipes/example/index.md'], { allowInfrastructure: false }), []);
+  assert.deepEqual(checkContributionScope([
+    'content/zh-CN/recipes/recover-a-session/index.md',
+    'demos/recover-a-session/README.md',
+    'demos/recover-a-session/src/index.js'
+  ], { allowInfrastructure: false }), []);
+  assert.deepEqual(checkContributionScope(['demos/README.md', 'demos/Bad_Slug/source.js'], { allowInfrastructure: false }), ['demos/README.md', 'demos/Bad_Slug/source.js']);
   assert.deepEqual(checkContributionScope(['content/zh-CN/recipes/example/index.md', 'scripts/validate.mjs'], { allowInfrastructure: false }), ['scripts/validate.mjs']);
   assert.deepEqual(checkContributionScope(['scripts/validate.mjs'], { allowInfrastructure: true }), []);
 });

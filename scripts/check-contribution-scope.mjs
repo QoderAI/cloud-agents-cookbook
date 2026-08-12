@@ -8,7 +8,9 @@ import { parseArgs } from 'node:util';
 
 export function checkContributionScope(files, options = {}) {
   if (options.allowInfrastructure) return [];
-  return files.filter(Boolean).filter((file) => !/^content\/(?:zh-CN|en-US)\/(?:recipes|best-practices|showcases|workshops)\//.test(file));
+  const contentPath = /^content\/(?:zh-CN|en-US)\/(?:recipes|best-practices|showcases|workshops)\/[a-z0-9]+(?:-[a-z0-9]+)*\//;
+  const demoPath = /^demos\/[a-z0-9]+(?:-[a-z0-9]+)*\//;
+  return files.filter(Boolean).filter((file) => !contentPath.test(file) && !demoPath.test(file));
 }
 
 async function runCli() {
