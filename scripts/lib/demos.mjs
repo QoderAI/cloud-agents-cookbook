@@ -70,7 +70,33 @@ function containsPrivateAddress(text) {
   for (const match of text.matchAll(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g)) {
     if (isPrivateHostname(match[0])) return true;
   }
+  for (const match of text.matchAll(/\[([0-9a-f:]+)\]/gi)) {
+    if (isPrivateHostname(match[1])) return true;
+  }
+  for (const match of text.matchAll(/(?:^|[\s="'(])((?:::1)|(?:f[cd]|fe8)[0-9a-f:]+)(?=$|[\s="'\/),])/gim)) {
+    if (isPrivateHostname(match[1])) return true;
+  }
   return false;
+}
+
+function hasProhibitedBinarySignature(bytes) {
+  const prefix = bytes.subarray(0, 16);
+  return prefix.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
+    || prefix.subarray(0, 2).equals(Buffer.from([0x1f, 0x8b]))
+    || prefix.subarray(0, 5).toString('ascii') === '%PDF-'
+    || prefix.subarray(0, 4).equals(Buffer.from([0x7f, 0x45, 0x4c, 0x46]))
+    || prefix.subarray(0, 2).toString('ascii') === 'MZ'
+    || prefix.subarray(0, 4).equals(Buffer.from([0x00, 0x61, 0x73, 0x6d]))
+    || prefix.subarray(0, 4).toString('ascii') === 'Rar!'
+    || prefix.subarray(0, 6).equals(Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]));
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function containsMarkdownLink(body, url) {
+  return new RegExp(`\\[[^\\]\\n]+\\]\\(\\s*${escapeRegExp(url)}(?:\\s+"[^"]*")?\\s*\\)`).test(body);
 }
 
 function imageSignatureMatches(bytes, extension) {
@@ -158,7 +184,7 @@ export async function validateDemos(root = process.cwd(), options = {}) {
     }
     const owner = ownerArticles.length === 1 ? ownerArticles[0] : null;
     const expectedUrl = `https://github.com/QoderAI/cloud-agents-cookbook/tree/main/demos/${slug}`;
-    if (owner && !owner.body.includes(expectedUrl)) push(errors, 'DEMO-003', owner.path, `Owner article must link the Demo with '${expectedUrl}'.`);
+    if (owner && !containsMarkdownLink(owner.body, expectedUrl)) push(errors, 'DEMO-003', owner.path, `Owner article must use a Markdown link to '${expectedUrl}'.`);
 
     const readmePath = path.join(demoDirectory, 'README.md');
     let readme = null;
@@ -198,6 +224,10 @@ export async function validateDemos(root = process.cwd(), options = {}) {
         continue;
       }
       const bytes = await readFile(item.path);
+      if (hasProhibitedBinarySignature(bytes)) {
+        push(errors, 'DEMO-006', file, 'Archive, document-container, executable, or compiled binary signatures are not allowed in Demos.');
+        continue;
+      }
       if (imageExtensions.has(extension)) {
         if (!imageSignatureMatches(bytes, extension)) push(errors, 'DEMO-006', file, 'Image bytes do not match the declared PNG, JPEG, or WebP format.');
         continue;

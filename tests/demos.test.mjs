@@ -31,7 +31,7 @@ test('rejects a Demo without an owner article or exact owner link', async () => 
 
   const noLink = await makeDemoFixtureWorkspace();
   const article = path.join(noLink, 'content', 'zh-CN', 'recipes', 'recover-a-session', 'index.md');
-  await writeFile(article, (await readFile(article, 'utf8')).replace('https://github.com/QoderAI/cloud-agents-cookbook/tree/main/demos/recover-a-session', 'https://example.com/demo'), 'utf8');
+  await writeFile(article, (await readFile(article, 'utf8')).replace('[查看 Demo 源码](https://github.com/QoderAI/cloud-agents-cookbook/tree/main/demos/recover-a-session)', 'https://github.com/QoderAI/cloud-agents-cookbook/tree/main/demos/recover-a-session'), 'utf8');
   assert.ok(rules(await validateDemos(noLink)).has('DEMO-003'));
 });
 
@@ -65,18 +65,27 @@ test('rejects real env files, archives, executables, and non-image binary files'
   await writeFile(path.join(demo, 'source.zip'), 'not really an archive\n');
   await writeFile(path.join(demo, 'program.exe'), 'not really executable\n');
   await writeFile(path.join(demo, 'payload.bin'), Buffer.from([0xff, 0x00, 0xfe]));
+  await writeFile(path.join(demo, 'renamed-document.dat'), '%PDF-1.7\ntext-shaped binary container\n');
   const result = await validateDemos(root);
-  assert.ok(result.errors.filter((error) => error.rule === 'DEMO-006').length >= 4);
+  assert.ok(result.errors.filter((error) => error.rule === 'DEMO-006').length >= 5);
 });
 
 test('rejects credentials and private or internal addresses in every text file', async () => {
   const root = await makeDemoFixtureWorkspace();
   const demo = path.join(root, 'demos', 'recover-a-session');
   const fakeSecret = ['sk', 'abcdefghijklmnopqrstuvwxyz123456'].join('-');
-  await writeFile(path.join(demo, 'unsafe.txt'), `TOKEN=${fakeSecret}\nCALLBACK=https://localhost:8080\nINTERNAL=https://service.alibaba-inc.com\n`);
+  await writeFile(path.join(demo, 'unsafe.txt'), `TOKEN=${fakeSecret}\nCALLBACK=https://localhost:8080\nINTERNAL=https://service.alibaba-inc.com\nIPV6_HOST=[::1]\n`);
   const result = await validateDemos(root);
   assert.ok(rules(result).has('DEMO-008'));
   assert.ok(rules(result).has('DEMO-009'));
+});
+
+test('rejects direct IPv6 loopback, unique-local, and link-local addresses', async () => {
+  for (const address of ['[::1]', '[fd00::1]', '[fe80::1]']) {
+    const root = await makeDemoFixtureWorkspace();
+    await writeFile(path.join(root, 'demos', 'recover-a-session', 'ipv6.txt'), `HOST=${address}\n`);
+    assert.ok(rules(await validateDemos(root)).has('DEMO-009'), address);
+  }
 });
 
 test('rejects files and Demo trees over configured byte limits', async () => {
