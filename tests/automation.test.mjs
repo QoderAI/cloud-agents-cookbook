@@ -65,6 +65,22 @@ test('maintainer infrastructure pull requests exercise the proposed tooling', as
   assert.match(previewSource, /node submission\/scripts\/build-preview\.mjs --root submission --contract-root submission/);
 });
 
+test('trusted automation validates Demo source as data without executing it', async () => {
+  const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
+  assert.equal(packageJson.scripts['validate:demos'], 'node scripts/validate-demos.mjs');
+  assert.match(packageJson.scripts.check, /npm run validate:demos/);
+
+  const validateSource = await readFile(path.join(repoRoot, '.github', 'workflows', 'validate.yml'), 'utf8');
+  assert.match(validateSource, /node trusted\/scripts\/check-demo-changes\.mjs --base trusted --candidate submission --files changed-files\.txt/);
+  assert.match(validateSource, /node trusted\/scripts\/validate-demos\.mjs --root submission/);
+
+  const automationSource = (await Promise.all([
+    readFile(path.join(repoRoot, 'package.json'), 'utf8'),
+    ...['validate.yml', 'preview.yml', 'publish.yml', 'dco.yml'].map((name) => readFile(path.join(repoRoot, '.github', 'workflows', name), 'utf8'))
+  ])).join('\n');
+  assert.doesNotMatch(automationSource, /working-directory:\s*submission\/demos|npm\s+--prefix\s+demos|docker\s+build|make\s+(?:-[^\s]+\s+)*demos/i);
+});
+
 test('forks always use trusted tooling and pull requests validate the synthetic merge tree', async () => {
   for (const workflowName of ['validate.yml', 'preview.yml']) {
     const source = await readFile(path.join(repoRoot, '.github', 'workflows', workflowName), 'utf8');
@@ -87,6 +103,8 @@ test('publication secrets are reachable only from a push to main', async () => {
 test('the publication archive excludes the pull-request preview', async () => {
   const source = await readFile(path.join(repoRoot, '.github', 'workflows', 'publish.yml'), 'utf8');
   assert.match(source, /name: Rebuild publication-only bundle\n\s+run: npm run build\n\s+- name: Package content bundle/);
+  assert.match(source, /tar -czf cookbook-content\.tgz dist/);
+  assert.doesNotMatch(source, /tar[^\n]*(?:demos|\s\.\s*$)/m);
 });
 
 test('the public dependency lock uses only npmjs.org and exact top-level versions', async () => {

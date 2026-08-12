@@ -56,6 +56,10 @@ jobs:
             case "$ASSOCIATION" in OWNER|MEMBER|COLLABORATOR) args+=(--allow-infrastructure) ;; esac
           fi
           node trusted/scripts/check-contribution-scope.mjs "${args[@]}"
+      - name: Enforce Demo lifecycle changes with trusted tooling
+        run: node trusted/scripts/check-demo-changes.mjs --base trusted --candidate submission --files changed-files.txt
+      - name: Validate Demo source as data with trusted tooling
+        run: node trusted/scripts/validate-demos.mjs --root submission
       - name: Enforce stable published slugs
         run: node trusted/scripts/check-stable-slugs.mjs --base trusted --candidate submission
       - name: Test trusted tooling
