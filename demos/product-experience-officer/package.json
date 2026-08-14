@@ -1,0 +1,11 @@
+{
+  "name": "product-experience-officer-demo",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Core source of the Product Experience Officer read-only evaluation runtime, extracted for the Cloud Agents Cookbook.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}
