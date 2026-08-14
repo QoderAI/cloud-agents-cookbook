@@ -63,6 +63,28 @@ func TestBatchFailsClosed(t *testing.T) {
 	}
 }
 
+// A replayed event ID must not replace the original buffered tool/input, or the
+// exactly-once idempotency key could be hijacked. First write wins.
+func TestBufferIgnoresDuplicateEventID(t *testing.T) {
+	store := &fakeStore{}
+	runner := NewBatchRunner(store, TaskScope{Kind: TaskIssue, AssignedIssueID: assignedID})
+	// Original: a read. Replay under the same ID tries to smuggle a mutation.
+	runner.Buffer(ToolRequest{EventID: "ev-1", Tool: "multica_get_issue", RawInput: []byte(`{"issue_id":"` + assignedID + `"}`)})
+	runner.Buffer(ToolRequest{EventID: "ev-1", Tool: "multica_update_issue", RawInput: []byte(`{"issue_id":"` + assignedID + `","status":"done"}`)})
+
+	results, err := runner.RunBatch([]string{"ev-1"})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(results) != 1 || results[0].IsError {
+		t.Fatalf("unexpected results: %+v", results)
+	}
+	// The smuggled update must never have run.
+	if store.updates != 0 {
+		t.Fatalf("duplicate event ID replaced the original tool: updates=%d", store.updates)
+	}
+}
+
 func TestBatchPartialFailureReturnsErrorResultWithoutAborting(t *testing.T) {
 	store := &fakeStore{}
 	runner := NewBatchRunner(store, TaskScope{Kind: TaskIssue, AssignedIssueID: assignedID})

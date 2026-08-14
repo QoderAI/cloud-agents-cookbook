@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 )
 
@@ -189,6 +190,15 @@ func strictUnmarshal(raw []byte, out any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(out); err != nil {
+		return fmt.Errorf("invalid tool input: %w", err)
+	}
+	// Fail closed: require exactly one JSON value with no trailing tokens, so a
+	// cloud-supplied body like `{}{}` cannot smuggle a second value past
+	// validation. A clean end of input decodes to io.EOF.
+	if err := decoder.Decode(new(json.RawMessage)); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("invalid tool input: unexpected trailing data")
+		}
 		return fmt.Errorf("invalid tool input: %w", err)
 	}
 	return nil

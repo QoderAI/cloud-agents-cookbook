@@ -86,46 +86,44 @@ func (s *StreamReader) readOnce(ctx context.Context, handle func(Event) (bool, e
 		return true, fmt.Errorf("stream HTTP %d", response.StatusCode)
 	}
 
-	for _, event := range parseSSE(response.Body) {
-		if event.ID != "" {
-			s.lastEventID = event.ID
-			if s.seen[event.ID] {
-				continue // dedup a replayed event
-			}
-			s.seen[event.ID] = true
-		}
-		stop, handleErr := handle(event)
-		if handleErr != nil {
-			return true, handleErr
-		}
-		if stop {
-			return true, nil
-		}
-	}
-	return false, io.ErrUnexpectedEOF // stream cut short: allow reconnect
-}
-
-// parseSSE decodes a text/event-stream body into complete events. It is a
-// minimal parser sufficient for id/event/data fields separated by blank lines.
-func parseSSE(body io.Reader) []Event {
-	var events []Event
-	scanner := bufio.NewScanner(body)
+	// Parse the event stream incrementally: dispatch each event to handle as
+	// soon as its terminating blank line arrives, so a long-lived stream is
+	// processed in real time and handle's stop signal takes effect promptly.
+	scanner := bufio.NewScanner(response.Body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	var current Event
 	var data strings.Builder
-	flush := func() {
+
+	// dispatch delivers one completed event, applying Last-Event-ID tracking
+	// and replay deduplication. It reports whether the caller asked to stop.
+	dispatch := func() (stop bool, err error) {
 		if current.ID == "" && current.Type == "" && data.Len() == 0 {
-			return
+			return false, nil
 		}
-		current.Data = data.String()
-		events = append(events, current)
+		event := current
+		event.Data = data.String()
 		current = Event{}
 		data.Reset()
+		if event.ID != "" {
+			s.lastEventID = event.ID
+			if s.seen[event.ID] {
+				return false, nil // dedup a replayed event
+			}
+			s.seen[event.ID] = true
+		}
+		return handle(event)
 	}
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
-			flush()
+			stop, handleErr := dispatch()
+			if handleErr != nil {
+				return true, handleErr
+			}
+			if stop {
+				return true, nil
+			}
 			continue
 		}
 		field, value, _ := strings.Cut(line, ":")
@@ -142,6 +140,16 @@ func parseSSE(body io.Reader) []Event {
 			data.WriteString(value)
 		}
 	}
-	flush()
-	return events
+	// Flush a trailing event that ended without a final blank line.
+	stop, handleErr := dispatch()
+	if handleErr != nil {
+		return true, handleErr
+	}
+	if stop {
+		return true, nil
+	}
+	if scanErr := scanner.Err(); scanErr != nil {
+		return false, scanErr // transient read failure: allow reconnect
+	}
+	return false, io.ErrUnexpectedEOF // stream cut short: allow reconnect
 }

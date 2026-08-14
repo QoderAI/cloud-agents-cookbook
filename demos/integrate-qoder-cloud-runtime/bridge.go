@@ -56,6 +56,12 @@ func NewBatchRunner(store IssueStore, scope TaskScope) *BatchRunner {
 func (r *BatchRunner) Buffer(request ToolRequest) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// The event ID is the exactly-once idempotency key, so a duplicate or
+	// replayed event must not replace the original tool/input. First write
+	// wins; later buffers of the same ID are ignored.
+	if _, exists := r.buffered[request.EventID]; exists {
+		return
+	}
 	r.buffered[request.EventID] = request
 }
 

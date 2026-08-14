@@ -44,6 +44,7 @@ func TestDispatchRejectsInvalidInput(t *testing.T) {
 		{"invalid enum", "multica_update_issue", `{"issue_id":"` + assignedID + `","status":"shipped"}`},
 		{"empty update", "multica_update_issue", `{"issue_id":"` + assignedID + `"}`},
 		{"fractional limit", "multica_list_issues", `{"limit":1.5}`},
+		{"trailing data", "multica_get_issue", `{"issue_id":"` + assignedID + `"}{}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
