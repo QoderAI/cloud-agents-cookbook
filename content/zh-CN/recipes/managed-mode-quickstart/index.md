@@ -1,8 +1,8 @@
 ---
 schema_version: 1
 slug: managed-mode-quickstart
-title: Managed Mode 快速开始：创建 Session、对话并追踪 Credit 消耗
-summary: 用最小闭环跑通 Qoder Cloud Agents Managed Mode——创建 Session、发送消息、通过 SSE 事件流接收 Agent 回复，并读取每次模型调用的 Credit 消耗与 Session 累计用量。适合首次接入 Cloud Agents API 的开发者。
+title: Managed Mode 快速开始：五个 curl 跑通首次对话
+summary: 五个 curl 命令跑通 Managed Mode 首次对话：创建 Session、发送消息、SSE 接收回复，并看清每一步的 Credit 消耗。
 type: recipe
 category: quick-start
 tags:
