@@ -1,7 +1,7 @@
 ---
 schema_version: 1
 slug: managed-mode-quickstart
-title: Managed Mode 快速开始
+title: Managed Mode 快速开始：五个 curl 跑通首次对话
 summary: 五个 curl 命令跑通 Managed Mode 首次对话：创建 Session、发送消息、SSE 接收回复，并看清每一步的 Credit 消耗。
 type: recipe
 category: quick-start
