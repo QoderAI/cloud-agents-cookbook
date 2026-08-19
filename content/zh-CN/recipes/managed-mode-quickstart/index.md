@@ -1,8 +1,8 @@
 ---
 schema_version: 1
 slug: managed-mode-quickstart
-title: 快速开始：第一个云端 Agent 对话
-summary: 五个 curl 命令跑通 Qoder Cloud Agents 的首次对话：创建 Session、发送消息、SSE 事件流接收回复，并看清每一步的 Credit 消耗。
+title: Managed Mode 快速开始
+summary: 五个 curl 命令跑通 Managed Mode 首次对话：创建 Session、发送消息、SSE 接收回复，并看清每一步的 Credit 消耗。
 type: recipe
 category: quick-start
 tags:
