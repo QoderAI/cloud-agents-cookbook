@@ -80,7 +80,7 @@ test('external content contributions cannot change repository infrastructure', (
 test('workflows pin actions and isolate public pull requests from secrets and write tokens', async () => {
   const directory = path.join(repoRoot, '.github', 'workflows');
   const files = (await readdir(directory)).filter((file) => file.endsWith('.yml'));
-  assert.deepEqual(files.sort(), ['dco.yml', 'preview.yml', 'publish.yml', 'validate.yml']);
+  assert.deepEqual(files.sort(), ['dco.yml', 'merge-queue.yml', 'preview.yml', 'publish.yml', 'validate.yml']);
 
   for (const file of files) {
     const source = await readFile(path.join(directory, file), 'utf8');
@@ -93,12 +93,29 @@ test('workflows pin actions and isolate public pull requests from secrets and wr
         if (step.uses) assert.match(step.uses, /^actions\/[a-z-]+@[a-f0-9]{40}$/, `${file} must pin '${step.uses}' to a commit SHA`);
       }
     }
-    if (workflow.on?.pull_request) {
+    if (workflow.on?.pull_request || workflow.on?.merge_group) {
       assert.doesNotMatch(source, /pull_request_target/);
-      assert.doesNotMatch(source, /secrets\./, `${file} must not expose secrets to pull requests`);
+      assert.doesNotMatch(source, /secrets\./, `${file} must not expose secrets to untrusted changes`);
       assert.match(source, /persist-credentials:\s*false/);
     }
   }
+});
+
+test('merge queue validates the synthetic group with the existing check contexts', async () => {
+  const source = await readFile(path.join(repoRoot, '.github', 'workflows', 'merge-queue.yml'), 'utf8');
+  const workflow = YAML.parse(source);
+  assert.deepEqual(workflow.on, { merge_group: { types: ['checks_requested'] } });
+  assert.deepEqual(Object.keys(workflow.jobs).sort(), ['dco', 'preview', 'validate']);
+  assert.deepEqual(workflow.permissions, { contents: 'read' });
+  for (const job of Object.values(workflow.jobs)) assert.equal(job.permissions, undefined, 'jobs must not override read-only workflow permissions');
+  assert.doesNotMatch(source, /github\.event\.pull_request|pull_request_target|secrets\.|\b(?:actions|checks|contents|deployments|id-token|issues|packages|pages|pull-requests|security-events|statuses):\s*write\b/);
+  assert.match(source, /BASE_SHA: \${{ github\.event\.merge_group\.base_sha }}/);
+  assert.match(source, /HEAD_SHA: \${{ github\.event\.merge_group\.head_sha }}/);
+  assert.match(source, /node trusted\/scripts\/check-dco\.mjs --repo submission --base "\$BASE_SHA" --head "\$HEAD_SHA" --no-merges/);
+  assert.match(source, /node submission\/scripts\/build-preview\.mjs --root submission --contract-root submission --out-dir artifacts\/preview/);
+  assert.match(source, /cookbook-preview-\${{ github\.run_id }}/);
+  assert.match(source, /working-directory: submission\n\s+run: npm run check/);
+  assert.doesNotMatch(source, /working-directory:\s*submission\/demos|npm\s+--prefix\s+demos|docker\s+build|make\s+(?:-[^\s]+\s+)*demos/i);
 });
 
 test('maintainer infrastructure pull requests exercise the proposed tooling', async () => {
@@ -128,7 +145,7 @@ test('trusted automation validates Demo source as data without executing it', as
 
   const automationSource = (await Promise.all([
     readFile(path.join(repoRoot, 'package.json'), 'utf8'),
-    ...['validate.yml', 'preview.yml', 'publish.yml', 'dco.yml'].map((name) => readFile(path.join(repoRoot, '.github', 'workflows', name), 'utf8'))
+    ...['validate.yml', 'preview.yml', 'publish.yml', 'dco.yml', 'merge-queue.yml'].map((name) => readFile(path.join(repoRoot, '.github', 'workflows', name), 'utf8'))
   ])).join('\n');
   assert.doesNotMatch(automationSource, /working-directory:\s*submission\/demos|npm\s+--prefix\s+demos|docker\s+build|make\s+(?:-[^\s]+\s+)*demos/i);
 });

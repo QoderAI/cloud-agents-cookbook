@@ -1,0 +1,93 @@
+name: Validate merge queue
+
+on:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: merge-queue-${{ github.event.merge_group.head_ref }}
+  cancel-in-progress: true
+
+jobs:
+  dco:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_SHA: ${{ github.event.merge_group.base_sha }}
+      HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+    steps:
+      - name: Check out trusted tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: trusted
+          persist-credentials: false
+      - name: Check out merge-group history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          path: submission
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20
+      - name: Check every non-merge commit sign-off
+        run: node trusted/scripts/check-dco.mjs --repo submission --base "$BASE_SHA" --head "$HEAD_SHA" --no-merges
+
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out merge-group tree
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.merge_group.head_sha }}
+          path: submission
+          persist-credentials: false
+      - name: Use Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: submission/package-lock.json
+      - name: Install merge-group dependencies
+        working-directory: submission
+        run: npm ci --ignore-scripts
+      - name: Build merge-group preview
+        run: node submission/scripts/build-preview.mjs --root submission --contract-root submission --out-dir artifacts/preview
+      - name: Upload preview artifact
+        id: preview-artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cookbook-preview-${{ github.run_id }}
+          path: artifacts/preview
+          retention-days: 3
+          if-no-files-found: error
+
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out merge-group tree
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.merge_group.head_sha }}
+          path: submission
+          persist-credentials: false
+      - name: Use Node.js 20
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: submission/package-lock.json
+      - name: Install merge-group dependencies
+        working-directory: submission
+        run: npm ci --ignore-scripts
+      - name: Validate merge-group tree
+        working-directory: submission
+        run: npm run check
