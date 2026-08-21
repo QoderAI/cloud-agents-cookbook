@@ -45,21 +45,58 @@ Automated checks do not determine factual correctness, public product status, De
 Auto-merge must remain disabled. Only a Maintainer with write access may manually add a pull request to the queue, and green checks alone are never sufficient authorization. Capture the PR's `headRefOid` before reviewing both outputs in full:
 
 ```bash
-TASK_PR_NUMBER=123
-TASK_PR_NODE_ID="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json id --jq .id)"
-TASK_REVIEWED_SHA="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
-gh pr diff "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --name-only
-gh pr diff "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook
-TASK_CURRENT_SHA="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
-test "$TASK_CURRENT_SHA" = "$TASK_REVIEWED_SHA"
-TASK_ENQUEUE_UTC="$(node -e 'process.stdout.write(new Date().toISOString())')"
-gh api graphql \
-  -f query='mutation($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { enqueuePullRequest(input: {pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid}) { mergeQueueEntry { id position } } }' \
-  -F pullRequestId="$TASK_PR_NODE_ID" \
-  -F expectedHeadOid="$TASK_REVIEWED_SHA"
-gh api graphql \
-  -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeQueueEntry { id position } } } }' \
-  -F id="$TASK_PR_NODE_ID"
+(
+  set -euo pipefail
+  TASK_PR_NUMBER=123
+  TASK_PR_NODE_ID="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json id --jq .id)"
+  TASK_REVIEWED_SHA="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+  gh pr diff "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --name-only
+  gh pr diff "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook
+  TASK_CURRENT_SHA="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+  test "$TASK_CURRENT_SHA" = "$TASK_REVIEWED_SHA"
+  TASK_PRE_READBACK_JSON="$(gh api graphql \
+    -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeQueueEntry { id position } } } }' \
+    -F id="$TASK_PR_NODE_ID")"
+  printf '%s\n' "$TASK_PRE_READBACK_JSON" | jq -e --arg sha "$TASK_REVIEWED_SHA" \
+    '.data.node.state == "OPEN" and .data.node.headRefOid == $sha and .data.node.mergeQueueEntry == null' >/dev/null
+  TASK_ENQUEUE_UTC="$(node -e 'process.stdout.write(new Date().toISOString())')"
+  set +e
+  TASK_ENQUEUE_JSON="$(gh api graphql \
+    -f query='mutation($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { enqueuePullRequest(input: {pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid}) { mergeQueueEntry { id position } } }' \
+    -F pullRequestId="$TASK_PR_NODE_ID" \
+    -F expectedHeadOid="$TASK_REVIEWED_SHA")"
+  TASK_MUTATION_STATUS=$?
+  set -e
+  TASK_MUTATION_ENTRY_ID="$(printf '%s\n' "$TASK_ENQUEUE_JSON" | jq -er '.data.enqueuePullRequest.mergeQueueEntry.id | select(type == "string" and length > 0)' 2>/dev/null)" || TASK_MUTATION_ENTRY_ID=""
+  if ! TASK_POST_READBACK_JSON="$(gh api graphql \
+    -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeQueueEntry { id position } } } }' \
+    -F id="$TASK_PR_NODE_ID")"; then
+    printf 'post-readback failed; admission state is indeterminate; do not retry blindly\n' >&2
+    exit 1
+  fi
+  printf '%s\n' "$TASK_POST_READBACK_JSON" | jq -c '.data.node | {state, headRefOid, mergeQueueEntry}'
+  if TASK_QUEUE_ENTRY_ID="$(printf '%s\n' "$TASK_POST_READBACK_JSON" | jq -er --arg sha "$TASK_REVIEWED_SHA" \
+    'select(.data.node.state == "OPEN" and .data.node.headRefOid == $sha) | .data.node.mergeQueueEntry.id | select(type == "string" and length > 0)')"; then
+    if [ "$TASK_MUTATION_STATUS" -eq 0 ]; then
+      test -n "$TASK_MUTATION_ENTRY_ID"
+    fi
+    TASK_EXPECTED_ENTRY_ID="$TASK_QUEUE_ENTRY_ID"
+    if [ -n "$TASK_MUTATION_ENTRY_ID" ]; then
+      TASK_EXPECTED_ENTRY_ID="$TASK_MUTATION_ENTRY_ID"
+    fi
+    printf '%s\n' "$TASK_POST_READBACK_JSON" | jq -e --arg sha "$TASK_REVIEWED_SHA" --arg entry "$TASK_EXPECTED_ENTRY_ID" \
+      '.data.node.state == "OPEN" and .data.node.headRefOid == $sha and .data.node.mergeQueueEntry.id == $entry' >/dev/null
+    test "$TASK_QUEUE_ENTRY_ID" = "$TASK_EXPECTED_ENTRY_ID"
+    printf 'mutation_status=%s\nenqueue_time=%s\nqueue_entry=%s\n' "$TASK_MUTATION_STATUS" "$TASK_ENQUEUE_UTC" "$TASK_QUEUE_ENTRY_ID"
+  elif printf '%s\n' "$TASK_POST_READBACK_JSON" | jq -e --arg sha "$TASK_REVIEWED_SHA" \
+    '.data.node.state == "OPEN" and .data.node.headRefOid == $sha and .data.node.mergeQueueEntry == null' >/dev/null; then
+    printf 'confirmed not queued; stop and review before another admission attempt\n' >&2
+    exit 1
+  else
+    printf 'post-readback is indeterminate or the head changed; stop and dequeue if necessary\n' >&2
+    exit 1
+  fi
+)
 ```
 
-Replace the `TASK_` prefix with a name unique to the operation. Read `headRefOid` again immediately before enqueueing and require strict equality with the reviewed SHA. If the local comparison or GraphQL `expectedHeadOid` check fails, the PR remains unqueued: stop and repeat the complete review. Successful admission requires the readback to show `state=OPEN`, the same `headRefOid`, and a non-null `mergeQueueEntry`. Never set `jump`. Do not queue an external pull request that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned automation/security infrastructure. Recreate and review that work as a Maintainer-owned infrastructure pull request. The Ruleset keeps zero required approvals only because the repository currently has a single Maintainer; it compensates with an empty bypass list and this explicit manual admission boundary. When a second Maintainer is available, require approval, Code Owner review, and latest-push approval.
+Replace the `TASK_` prefix with a name unique to the operation. Before mutation, readback must prove `state=OPEN`, the reviewed head, and no existing queue entry. A mutation transport failure is indeterminate, so the script always performs post-readback and never retries blindly. The PR is admitted only when post-readback returns the same head and a non-empty entry ID; when the mutation response also contains an ID, both IDs must match. The same head with `mergeQueueEntry=null` confirms no admission and stops the workflow. A head mismatch or any other state is indeterminate: stop and dequeue first if necessary. Never set `jump`. Do not queue an external pull request that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned automation/security infrastructure. Recreate and review that work as a Maintainer-owned infrastructure pull request. The Ruleset keeps zero required approvals only because the repository currently has a single Maintainer; it compensates with an empty bypass list and this explicit manual admission boundary. When a second Maintainer is available, require approval, Code Owner review, and latest-push approval.

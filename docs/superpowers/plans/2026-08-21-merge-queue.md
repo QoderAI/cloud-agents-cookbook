@@ -17,7 +17,7 @@
 - Workflows use only SHA-pinned official GitHub Actions, `permissions: contents: read`, bounded timeouts, no Secrets, no write tokens, and no Demo source execution.
 - Existing `pull_request` DCO behavior and `scripts/check-dco.mjs` remain unchanged and continue checking every contributor commit.
 - The pull-request `dco` context must remain required before and after queue enablement; the merge-group job named `dco` only attests that this admission gate passed.
-- Auto-merge remains disabled. Green checks are not authorization; only a Maintainer with write access may manually queue a PR after capturing its node ID and `headRefOid`, reviewing `gh pr diff <PR> --name-only` and `gh pr diff <PR>` in full, re-reading the head with strict equality, and calling GraphQL `enqueuePullRequest` with that SHA as `expectedHeadOid`. Never set `jump`; any comparison or mutation failure requires complete re-review.
+- Auto-merge remains disabled. Green checks are not authorization; only a Maintainer with write access may manually queue a PR after capturing its node ID and `headRefOid`, reviewing `gh pr diff <PR> --name-only` and `gh pr diff <PR>` in full, and proving by pre-readback that the reviewed head is open and unqueued. GraphQL `enqueuePullRequest` uses that SHA as `expectedHeadOid` and never sets `jump`. Post-readback always runs after the mutation attempt; success requires the reviewed head and a non-empty entry ID, equal to the mutation entry ID when one is returned. Never blindly retry an indeterminate mutation.
 - Never queue an external PR that changes `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned automation/security infrastructure. Recreate it as a Maintainer-owned infrastructure PR.
 - Preserve the approved single-maintainer Ruleset review parameters: zero required approvals, no required Code Owner review, and no last-push approval. Preserve the empty bypass list.
 - The root test command is exactly `node scripts/run-tests.mjs`; the runner enumerates sorted, top-level `tests/*.test.mjs` paths without a shell glob. Demo and nested sentinels must remain unexecuted.
@@ -647,19 +647,58 @@ Expected: `state=OPEN`, `isDraft=false`, `mergeable=MERGEABLE`, base `main`, no 
 - [ ] **Step 2: Submit PR #11 to the queue**
 
 ```bash
-PR11_CURRENT_SHA="$(gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
-test "$PR11_CURRENT_SHA" = "$PR11_REVIEWED_SHA"
-PR11_ENQUEUE_UTC="$(node -e 'process.stdout.write(new Date().toISOString())')"
-gh api graphql \
-  -f query='mutation($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { enqueuePullRequest(input: {pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid}) { mergeQueueEntry { id position } } }' \
-  -F pullRequestId="$PR11_NODE_ID" \
-  -F expectedHeadOid="$PR11_REVIEWED_SHA"
-gh api graphql \
-  -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeQueueEntry { id position } } } }' \
-  -F id="$PR11_NODE_ID"
+{
+  set -euo pipefail
+  : "${PR11_NODE_ID:?Run Step 1 in this shell first}"
+  : "${PR11_REVIEWED_SHA:?Run Step 1 in this shell first}"
+  PR11_CURRENT_SHA="$(gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+  test "$PR11_CURRENT_SHA" = "$PR11_REVIEWED_SHA"
+  PR11_PRE_READBACK_JSON="$(gh api graphql \
+    -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeQueueEntry { id position } } } }' \
+    -F id="$PR11_NODE_ID")"
+  printf '%s\n' "$PR11_PRE_READBACK_JSON" | jq -e --arg sha "$PR11_REVIEWED_SHA" \
+    '.data.node.state == "OPEN" and .data.node.headRefOid == $sha and .data.node.mergeQueueEntry == null' >/dev/null
+  PR11_ENQUEUE_UTC="$(node -e 'process.stdout.write(new Date().toISOString())')"
+  set +e
+  PR11_ENQUEUE_JSON="$(gh api graphql \
+    -f query='mutation($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { enqueuePullRequest(input: {pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid}) { mergeQueueEntry { id position } } }' \
+    -F pullRequestId="$PR11_NODE_ID" \
+    -F expectedHeadOid="$PR11_REVIEWED_SHA")"
+  PR11_MUTATION_STATUS=$?
+  set -e
+  PR11_MUTATION_ENTRY_ID="$(printf '%s\n' "$PR11_ENQUEUE_JSON" | jq -er '.data.enqueuePullRequest.mergeQueueEntry.id | select(type == "string" and length > 0)' 2>/dev/null)" || PR11_MUTATION_ENTRY_ID=""
+  if ! PR11_POST_READBACK_JSON="$(gh api graphql \
+    -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeQueueEntry { id position } } } }' \
+    -F id="$PR11_NODE_ID")"; then
+    printf 'post-readback failed; admission state is indeterminate; do not retry blindly\n' >&2
+    exit 1
+  fi
+  printf '%s\n' "$PR11_POST_READBACK_JSON" | jq -c '.data.node | {state, headRefOid, mergeQueueEntry}'
+  if PR11_QUEUE_ENTRY_ID="$(printf '%s\n' "$PR11_POST_READBACK_JSON" | jq -er --arg sha "$PR11_REVIEWED_SHA" \
+    'select(.data.node.state == "OPEN" and .data.node.headRefOid == $sha) | .data.node.mergeQueueEntry.id | select(type == "string" and length > 0)')"; then
+    if [ "$PR11_MUTATION_STATUS" -eq 0 ]; then
+      test -n "$PR11_MUTATION_ENTRY_ID"
+    fi
+    PR11_EXPECTED_ENTRY_ID="$PR11_QUEUE_ENTRY_ID"
+    if [ -n "$PR11_MUTATION_ENTRY_ID" ]; then
+      PR11_EXPECTED_ENTRY_ID="$PR11_MUTATION_ENTRY_ID"
+    fi
+    printf '%s\n' "$PR11_POST_READBACK_JSON" | jq -e --arg sha "$PR11_REVIEWED_SHA" --arg entry "$PR11_EXPECTED_ENTRY_ID" \
+      '.data.node.state == "OPEN" and .data.node.headRefOid == $sha and .data.node.mergeQueueEntry.id == $entry' >/dev/null
+    test "$PR11_QUEUE_ENTRY_ID" = "$PR11_EXPECTED_ENTRY_ID"
+    printf 'mutation_status=%s\nenqueue_time=%s\nqueue_entry=%s\n' "$PR11_MUTATION_STATUS" "$PR11_ENQUEUE_UTC" "$PR11_QUEUE_ENTRY_ID"
+  elif printf '%s\n' "$PR11_POST_READBACK_JSON" | jq -e --arg sha "$PR11_REVIEWED_SHA" \
+    '.data.node.state == "OPEN" and .data.node.headRefOid == $sha and .data.node.mergeQueueEntry == null' >/dev/null; then
+    printf 'confirmed not queued; stop and review before another admission attempt\n' >&2
+    exit 1
+  else
+    printf 'post-readback is indeterminate or the head changed; stop and dequeue if necessary\n' >&2
+    exit 1
+  fi
+}
 ```
 
-This mutation must be run by the write-access Maintainer only after completing Step 1. The head read occurs immediately before enqueueing and must match exactly; if the local comparison or GraphQL `expectedHeadOid` check fails, the PR remains unqueued and Step 1 must be repeated against the new head. Never set `jump`. Expected readback: `state=OPEN`, `headRefOid=PR11_REVIEWED_SHA`, and a non-null `mergeQueueEntry`.
+This controlled admission must be run by the write-access Maintainer only after completing Step 1 in the same shell. Pre-readback proves the reviewed PR is open and unqueued. Mutation failure is indeterminate, so post-readback always runs and the mutation must never be retried blindly. Admission succeeds only when post-readback has `state=OPEN`, `headRefOid=PR11_REVIEWED_SHA`, and a non-empty queue-entry ID; when the mutation response also has an ID, both IDs must match. The same head with a null entry confirms no admission and stops; any other state stops and may require dequeue. Never set `jump`.
 
 - [ ] **Step 3: Locate and monitor the real merge-group run**
 
