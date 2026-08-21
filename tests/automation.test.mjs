@@ -2,12 +2,17 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdir, readFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import YAML from 'yaml';
-import { checkDcoMessages } from '../scripts/check-dco.mjs';
+import { checkDcoMessages, commitsInRange } from '../scripts/check-dco.mjs';
 import { checkContributionScope } from '../scripts/check-contribution-scope.mjs';
 import { repoRoot } from './helpers.mjs';
+
+const execFileAsync = promisify(execFile);
 
 test('DCO check requires a valid Signed-off-by trailer in every commit', () => {
   const result = checkDcoMessages([
@@ -15,6 +20,42 @@ test('DCO check requires a valid Signed-off-by trailer in every commit', () => {
     { sha: 'bbb222', message: 'docs: missing trailer' }
   ]);
   assert.deepEqual(result, [{ sha: 'bbb222', message: 'Commit is missing a valid Signed-off-by trailer.' }]);
+});
+
+test('merge-group DCO mode excludes only merge commits', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'qca-cookbook-dco-'));
+  const git = (...args) => execFileAsync('git', args, { cwd: root });
+  await git('init', '-b', 'main');
+  await git('config', 'user.name', 'Example Author');
+  await git('config', 'user.email', 'author@example.com');
+
+  await writeFile(path.join(root, 'base.txt'), 'base\n');
+  await git('add', 'base.txt');
+  await git('commit', '-m', 'docs: base', '-m', 'Signed-off-by: Example Author <author@example.com>');
+  const { stdout: baseOutput } = await git('rev-parse', 'HEAD');
+  const base = baseOutput.trim();
+
+  await git('checkout', '-b', 'feature');
+  await writeFile(path.join(root, 'feature.txt'), 'feature\n');
+  await git('add', 'feature.txt');
+  await git('commit', '-m', 'docs: unsigned feature');
+  const { stdout: featureOutput } = await git('rev-parse', 'HEAD');
+  const feature = featureOutput.trim();
+
+  await git('checkout', 'main');
+  await writeFile(path.join(root, 'main.txt'), 'main\n');
+  await git('add', 'main.txt');
+  await git('commit', '-m', 'docs: main', '-m', 'Signed-off-by: Example Author <author@example.com>');
+  await git('merge', '--no-ff', 'feature', '-m', 'Merge feature');
+  const { stdout: headOutput } = await git('rev-parse', 'HEAD');
+  const head = headOutput.trim();
+
+  const defaultFailures = checkDcoMessages(await commitsInRange(root, base, head));
+  assert.equal(defaultFailures.length, 2);
+  assert.ok(defaultFailures.some((failure) => failure.sha === feature));
+
+  const queueFailures = checkDcoMessages(await commitsInRange(root, base, head, { excludeMerges: true }));
+  assert.deepEqual(queueFailures, [{ sha: feature, message: 'Commit is missing a valid Signed-off-by trailer.' }]);
 });
 
 test('external content contributions cannot change repository infrastructure', () => {
