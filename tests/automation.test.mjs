@@ -72,22 +72,74 @@ test('merge queue validates the synthetic group with the existing check contexts
   assert.match(workflow.jobs.dco.steps[0].run, /printf/);
   assert.match(workflow.jobs.dco.steps[0].run, /required pull-request checks, including dco, passed/i);
   assert.doesNotMatch(source, /--no-merges|check-dco/);
+  for (const jobName of ['preview', 'validate']) {
+    const checkout = workflow.jobs[jobName].steps.find((step) => step.name === 'Check out merge-group tree');
+    assert.ok(checkout, `${jobName} must check out the merge-group tree`);
+    assert.equal(checkout.with.ref, '${{ github.event.merge_group.head_sha }}');
+  }
   assert.match(source, /node submission\/scripts\/build-preview\.mjs --root submission --contract-root submission --out-dir artifacts\/preview/);
   assert.match(source, /cookbook-preview-\${{ github\.run_id }}/);
   assert.match(source, /working-directory: submission\n\s+run: npm run check/);
   assert.doesNotMatch(source, /working-directory:\s*submission\/demos|npm\s+--prefix\s+demos|docker\s+build|make\s+(?:-[^\s]+\s+)*demos/i);
 });
 
+test('pull-request DCO remains the authoritative contributor sign-off check', async () => {
+  const source = await readFile(path.join(repoRoot, '.github', 'workflows', 'dco.yml'), 'utf8');
+  const workflow = YAML.parse(source);
+  assert.deepEqual(workflow.on, { pull_request: { branches: ['main'] } });
+  assert.deepEqual(Object.keys(workflow.jobs), ['dco']);
+
+  const job = workflow.jobs.dco;
+  assert.deepEqual(job.env, {
+    BASE_SHA: '${{ github.event.pull_request.base.sha }}',
+    HEAD_SHA: '${{ github.event.pull_request.head.sha }}'
+  });
+
+  const trustedCheckout = job.steps.find((step) => step.name === 'Check out trusted tooling');
+  assert.deepEqual(trustedCheckout.with, {
+    ref: '${{ env.BASE_SHA }}',
+    path: 'trusted',
+    'persist-credentials': false
+  });
+
+  const submissionCheckout = job.steps.find((step) => step.name === 'Check out pull request history');
+  assert.deepEqual(submissionCheckout.with, {
+    ref: '${{ env.HEAD_SHA }}',
+    path: 'submission',
+    'fetch-depth': 0,
+    'persist-credentials': false
+  });
+
+  const dcoCheck = job.steps.find((step) => step.name === 'Check every commit sign-off');
+  assert.equal(dcoCheck.run, 'node trusted/scripts/check-dco.mjs --repo submission --base "$BASE_SHA" --head "$HEAD_SHA"');
+  assert.doesNotMatch(dcoCheck.run, /--no-merges/);
+});
+
 test('npm test discovers only repository tests and never executes Demo source', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
+  const runnerSource = await readFile(path.join(repoRoot, 'scripts', 'run-tests.mjs'), 'utf8');
+  assert.equal(packageJson.scripts.test, 'node scripts/run-tests.mjs');
+  assert.match(runnerSource, /new URL\('\.\.\/tests\/', import\.meta\.url\)/);
+  assert.match(runnerSource, /entry\.isFile\(\) && entry\.name\.endsWith\('\.test\.mjs'\)/);
+  assert.match(runnerSource, /\.sort\(\)/);
+  assert.match(runnerSource, /spawn\(process\.execPath, \['--test', \.\.\.testFiles\]/);
+  assert.match(runnerSource, /child\.once\('error', reject\)/);
+  assert.match(runnerSource, /child\.once\('exit'/);
+  assert.match(runnerSource, /process\.kill\(process\.pid, result\.signal\)/);
+  assert.match(runnerSource, /process\.exitCode = result\.code \?\? 1/);
+  assert.doesNotMatch(runnerSource, /demos|recursive:\s*true/);
+
   const root = await mkdtemp(path.join(tmpdir(), 'qca-cookbook-test-discovery-'));
   await mkdir(path.join(root, 'tests'), { recursive: true });
+  await mkdir(path.join(root, 'tests', 'nested'), { recursive: true });
   await mkdir(path.join(root, 'demos', 'example'), { recursive: true });
+  await mkdir(path.join(root, 'scripts'), { recursive: true });
   await writeFile(path.join(root, 'package.json'), JSON.stringify({
     private: true,
     type: 'module',
     scripts: { test: packageJson.scripts.test }
   }));
+  await writeFile(path.join(root, 'scripts', 'run-tests.mjs'), runnerSource);
   await writeFile(path.join(root, 'tests', 'safe.test.mjs'), `
     import test from 'node:test';
     test('SAFE_FIXTURE_TEST', () => {});
@@ -95,13 +147,18 @@ test('npm test discovers only repository tests and never executes Demo source', 
   await writeFile(path.join(root, 'demos', 'example', 'test.js'), `
     throw new Error('DEMO_EXECUTED_SENTINEL');
   `);
+  await writeFile(path.join(root, 'tests', 'nested', 'nested.test.mjs'), `
+    throw new Error('NESTED_TEST_EXECUTED_SENTINEL');
+  `);
 
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
-  const result = await execFileAsync('npm', ['test'], { cwd: root, env }).catch((error) => error);
+  const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const result = await execFileAsync(npmExecutable, ['test'], { cwd: root, env }).catch((error) => error);
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
   assert.match(output, /SAFE_FIXTURE_TEST/);
   assert.doesNotMatch(output, /DEMO_EXECUTED_SENTINEL/);
+  assert.doesNotMatch(output, /NESTED_TEST_EXECUTED_SENTINEL/);
   assert.equal(result.code ?? 0, 0, output);
 });
 

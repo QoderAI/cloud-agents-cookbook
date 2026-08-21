@@ -15,6 +15,8 @@ The repository-level `Protect main` Ruleset targets the default branch and curre
 - `strict_required_status_checks_policy` is enabled;
 - no actor can bypass the Ruleset.
 
+The repository has `allow_auto_merge=false`. The current single-maintainer operating model intentionally keeps `required_approving_review_count=0`, `require_code_owner_review=false`, and `require_last_push_approval=false`: GitHub does not allow the author to approve their own pull request, so enabling those settings before a second Maintainer exists would block Maintainer infrastructure work.
+
 The three required workflows listen only to `pull_request` and depend on `github.event.pull_request.*`. GitHub dispatches the separate `merge_group.checks_requested` event for Merge Queue, so enabling the Ruleset rule before adding merge-group checks would leave the queue waiting for required checks that never report.
 
 ## Selected approach
@@ -38,7 +40,9 @@ on:
     types: [checks_requested]
 ```
 
-It grants only `contents: read`, uses no repository Secrets, never writes repository state, and never executes Demo source. A PR may be marked "Merge when ready" while its pull-request checks are still running, but it becomes an active, buildable queue entry only after satisfying the existing branch requirements. Those checks prevent public contributors from changing repository infrastructure, while internal infrastructure PRs exercise proposed tooling before they become eligible for merge-group validation.
+It grants only `contents: read`, uses no repository Secrets, never writes repository state, and never executes Demo source. A PR may be marked "Merge when ready" while its pull-request checks are still running, but it becomes an active, buildable queue entry only after satisfying the existing branch requirements.
+
+Green checks are not authorization to publish or enqueue a change. A pull request can propose changes to the workflows and tests that produce those checks, so this single-maintainer configuration relies on a separate human admission boundary: Auto-merge remains disabled, and only a Maintainer with write access may manually add a PR to the queue after reviewing both its complete changed-file list and full diff. Before enqueueing, the Maintainer runs `gh pr diff <PR> --name-only` and `gh pr diff <PR>`. An external PR that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned repository automation/security infrastructure is not admitted to the queue. Such a change must be rebuilt as a Maintainer-owned infrastructure PR and reviewed separately.
 
 ### `dco` job
 
@@ -54,11 +58,11 @@ The merge-group `dco` job has no checkout, token use, or repository mutation. It
 
 The job checks out the merge-group tree, installs dependencies with `npm ci --ignore-scripts`, builds the static preview, and uploads an artifact named with `github.run_id`. It does not depend on a pull-request number.
 
-Running the repository preview tooling is safe at this stage because an active merge-group entry has already passed the pull-request contribution-scope gate. External contributors cannot place modified infrastructure into an eligible merge group.
+Running the repository preview tooling is accepted at this stage because the write-access Maintainer has completed the manual admission review in addition to the automated pull-request checks. The queue does not independently prove that the candidate workflow is trustworthy.
 
 ### `validate` job
 
-The job checks out the merge-group tree, installs dependencies with `npm ci --ignore-scripts`, and runs `npm run check`. This validates the combined tree containing current `main`, all earlier queue entries, and the current entry. The root `npm test` command is explicitly scoped to `tests/*.test.mjs`; a Demo sentinel regression proves that `demos/**/test.js` is not discovered or executed.
+The job checks out the merge-group tree, installs dependencies with `npm ci --ignore-scripts`, and runs `npm run check`. This validates the combined tree containing current `main`, all earlier queue entries, and the current entry. The root `npm test` command invokes `scripts/run-tests.mjs`, which enumerates only top-level `tests/*.test.mjs` files without a shell glob. A fixture copies that same runner into a temporary repository and proves that `demos/**/test.js` and nested test-like files are not discovered or executed on Node.js 20-compatible platforms, including Windows.
 
 ## Automated regression checks
 
@@ -67,10 +71,10 @@ Repository tests will statically assert that:
 - the merge-queue workflow listens to `merge_group` and not `pull_request` or `push`;
 - the workflow exposes jobs named `dco`, `preview`, and `validate`;
 - permissions remain read-only and no Secrets or write permissions are referenced;
-- the DCO job contains only the approved queue-admission attestation, while the pull-request DCO workflow remains authoritative;
-- preview and validate operate on the merge-group SHA and do not depend on `github.event.pull_request.*`;
+- the DCO job contains only the approved queue-admission attestation, while a structural contract locks the authoritative pull-request DCO workflow to the PR base/head SHAs, trusted base tooling, complete submission history, and the exact DCO command;
+- preview and validate each check out exactly `github.event.merge_group.head_sha` and do not depend on `github.event.pull_request.*`;
 - Demo source is not executed, including through Node's automatic test discovery;
-- `npm test` runs only `tests/*.test.mjs`, and an allowed `demos/**/test.js` sentinel remains unexecuted.
+- `npm test` uses the cross-platform Node runner to execute only top-level `tests/*.test.mjs`, and allowed `demos/**/test.js` and nested sentinels remain unexecuted.
 
 The complete repository check remains `npm run check`.
 
@@ -94,9 +98,11 @@ After the infrastructure PR is merged, save the complete current Ruleset JSON an
 
 The update is performed with `gh api`, followed by an independent GET readback that compares all Ruleset conditions, rules, required checks, review settings, and bypass actors with the intended payload.
 
+Immediately before mutation, also read back repository settings and stop unless `allow_auto_merge=false`. Confirm that the Ruleset still has an empty bypass list, still requires `dco`, `preview`, and `validate`, and still has the approved single-maintainer review parameters: zero required approvals, no required Code Owner review, and no last-push approval. These values are deliberate operational constraints, not substitutes for the manual admission review.
+
 ## Live acceptance test
 
-Use the already-open PR #11 as the first queue entry after confirming it remains open, mergeable, has no unresolved review requirement, and has passing PR checks.
+Use the already-open PR #11 as the first queue entry after confirming it remains open, mergeable, has no unresolved review requirement, and has passing PR checks. Before enqueueing, a Maintainer must inspect `gh pr diff 11 --name-only` and `gh pr diff 11` and confirm the PR contains only the expected content-translation scope under `content/**`, with no workflow, script, test, package, configuration, Schema, or Maintainer-documentation changes.
 
 Add #11 through `gh pr merge 11 --squash`. Because the Ruleset requires Merge Queue, this command must enqueue the PR instead of directly merging it. Acceptance requires:
 
@@ -107,6 +113,8 @@ Add #11 through `gh pr merge 11 --squash`. Because the Ruleset requires Merge Qu
 - the Ruleset readback remains unchanged after the merge.
 
 No bypass option or direct push to `main` is allowed during acceptance.
+
+Only a Maintainer with write access performs the queue command. Auto-merge remains disabled; green status checks alone never authorize adding PR #11 or any future PR to the queue.
 
 ## Failure handling and rollback
 
@@ -122,5 +130,6 @@ The configuration is complete only when:
 
 1. The infrastructure PR is merged with DCO and all required checks passing.
 2. The active Ruleset contains the exact single-entry squash Merge Queue configuration and no unintended changes.
-3. PR #11 receives all three successful contexts from a real merge-group run and is automatically squash-merged.
-4. The final `main` and Ruleset states are independently read back through GitHub CLI.
+3. Repository Auto-merge remains disabled and the empty-bypass, manual Maintainer admission contract is documented and verified.
+4. PR #11 is confirmed to contain only the expected content translation, receives all three successful contexts from a real merge-group run, and is automatically squash-merged.
+5. The final `main` and Ruleset states are independently read back through GitHub CLI.

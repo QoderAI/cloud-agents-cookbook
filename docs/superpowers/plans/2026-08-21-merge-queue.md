@@ -4,7 +4,7 @@
 
 **Goal:** Enable a conservative, squash-only GitHub Merge Queue for `QoderAI/cloud-agents-cookbook`, with real `merge_group` validation and PR #11 as the end-to-end acceptance test.
 
-**Architecture:** Keep the existing `pull_request` workflows and DCO helper unchanged, and add one dedicated merge-group workflow that reports the existing `dco`, `preview`, and `validate` check contexts. The pull-request `dco` check remains authoritative; the merge-group `dco` job is a single-step queue-admission attestation, while `preview` and `validate` exercise the synthetic merge-group tree. Scope Node test discovery to `tests/*.test.mjs`, then merge the infrastructure PR before atomically updating Ruleset `20582196` through `gh api`.
+**Architecture:** Keep the existing `pull_request` workflows and DCO helper unchanged, and add one dedicated merge-group workflow that reports the existing `dco`, `preview`, and `validate` check contexts. The pull-request `dco` check remains authoritative; the merge-group `dco` job is a single-step queue-admission attestation, while `preview` and `validate` exercise the synthetic merge-group tree. Use a cross-platform Node runner to enumerate only top-level repository tests. Because a candidate PR can change check-producing infrastructure, keep Auto-merge disabled and require a write-access Maintainer to review the complete file list and diff before manually queueing. Merge the infrastructure PR before atomically updating Ruleset `20582196` through `gh api`.
 
 **Tech Stack:** GitHub Actions, GitHub CLI (`gh`), GitHub Rulesets REST API, Node.js 20, `node:test`, `yaml` 2.9.0, npm.
 
@@ -17,7 +17,10 @@
 - Workflows use only SHA-pinned official GitHub Actions, `permissions: contents: read`, bounded timeouts, no Secrets, no write tokens, and no Demo source execution.
 - Existing `pull_request` DCO behavior and `scripts/check-dco.mjs` remain unchanged and continue checking every contributor commit.
 - The pull-request `dco` context must remain required before and after queue enablement; the merge-group job named `dco` only attests that this admission gate passed.
-- The root test command is exactly `node --test tests/*.test.mjs`; a Demo sentinel must prove that `demos/**/test.js` is never discovered or executed.
+- Auto-merge remains disabled. Green checks are not authorization; only a Maintainer with write access may manually queue a PR after running `gh pr diff <PR> --name-only` and reviewing `gh pr diff <PR>` in full.
+- Never queue an external PR that changes `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned automation/security infrastructure. Recreate it as a Maintainer-owned infrastructure PR.
+- Preserve the approved single-maintainer Ruleset review parameters: zero required approvals, no required Code Owner review, and no last-push approval. Preserve the empty bypass list.
+- The root test command is exactly `node scripts/run-tests.mjs`; the runner enumerates sorted, top-level `tests/*.test.mjs` paths without a shell glob. Demo and nested sentinels must remain unexecuted.
 - Do not bypass checks, force-push, directly push `main`, or directly merge PR #11.
 - If merge-group validation fails or does not complete within the configured 10-minute response window, restore the original Ruleset before attempting any workflow repair.
 
@@ -25,21 +28,23 @@
 
 ## File Structure
 
-- Modify `package.json`: scope `npm test` to `node --test tests/*.test.mjs`.
-- Modify `tests/automation.test.mjs`: add the Demo test-discovery sentinel and statically enforce merge-queue workflow security/event/admission contracts.
+- Modify `package.json`: run tests through `node scripts/run-tests.mjs`.
+- Create `scripts/run-tests.mjs`: enumerate and sort only top-level `tests/*.test.mjs`, spawn `process.execPath --test` with exact paths, and propagate failure.
+- Modify `tests/automation.test.mjs`: copy the runner into a temporary fixture, add Demo/nested sentinels, and statically enforce merge-queue and authoritative PR-DCO contracts.
 - Create `.github/workflows/merge-queue.yml`: run `dco`, `preview`, and `validate` for `merge_group.checks_requested`.
-- Preserve `docs/superpowers/specs/2026-08-21-merge-queue-design.md`: approved design and acceptance contract.
+- Modify `docs/superpowers/specs/2026-08-21-merge-queue-design.md`, `docs/superpowers/plans/2026-08-21-merge-queue.md`, `docs/maintainers/repository-settings.md`, and `docs/automated-checks.md`: record the approved single-Maintainer manual admission boundary.
 - Create no persistent repository file for Ruleset payloads; store snapshots and request bodies only under `/private/tmp/qca-merge-queue-20260821/`.
 
 ### Task 1: Scope Node test discovery and prove Demo source stays inert
 
 **Files:**
 - Modify: `package.json:11`
+- Create: `scripts/run-tests.mjs`
 - Modify: `tests/automation.test.mjs`
 
 **Interfaces:**
 - Consumes: the root `npm test` script.
-- Produces: deterministic discovery of repository tests under `tests/*.test.mjs`, with no automatic execution of files under `demos/`.
+- Produces: deterministic, cross-platform discovery of top-level repository tests under `tests/*.test.mjs`, with no shell glob and no automatic execution of Demo or nested test-like files.
 
 - [ ] **Step 1: Write a failing Demo test-discovery sentinel**
 
@@ -48,14 +53,22 @@ Add imports for `execFile`, `mkdir`, `mkdtemp`, `tmpdir`, `writeFile`, and `prom
 ```js
 test('npm test discovers only repository tests and never executes Demo source', async () => {
   const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
+  const runnerSource = await readFile(path.join(repoRoot, 'scripts', 'run-tests.mjs'), 'utf8');
+  assert.equal(packageJson.scripts.test, 'node scripts/run-tests.mjs');
+  assert.match(runnerSource, /new URL\('\.\.\/tests\/', import\.meta\.url\)/);
+  assert.match(runnerSource, /entry\.isFile\(\) && entry\.name\.endsWith\('\.test\.mjs'\)/);
+  assert.doesNotMatch(runnerSource, /demos|recursive:\s*true/);
   const root = await mkdtemp(path.join(tmpdir(), 'qca-cookbook-test-discovery-'));
   await mkdir(path.join(root, 'tests'), { recursive: true });
+  await mkdir(path.join(root, 'tests', 'nested'), { recursive: true });
   await mkdir(path.join(root, 'demos', 'example'), { recursive: true });
+  await mkdir(path.join(root, 'scripts'), { recursive: true });
   await writeFile(path.join(root, 'package.json'), JSON.stringify({
     private: true,
     type: 'module',
     scripts: { test: packageJson.scripts.test }
   }));
+  await writeFile(path.join(root, 'scripts', 'run-tests.mjs'), runnerSource);
   await writeFile(path.join(root, 'tests', 'safe.test.mjs'), `
     import test from 'node:test';
     test('SAFE_FIXTURE_TEST', () => {});
@@ -63,13 +76,18 @@ test('npm test discovers only repository tests and never executes Demo source', 
   await writeFile(path.join(root, 'demos', 'example', 'test.js'), `
     throw new Error('DEMO_EXECUTED_SENTINEL');
   `);
+  await writeFile(path.join(root, 'tests', 'nested', 'nested.test.mjs'), `
+    throw new Error('NESTED_TEST_EXECUTED_SENTINEL');
+  `);
 
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
-  const result = await execFileAsync('npm', ['test'], { cwd: root, env }).catch((error) => error);
+  const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const result = await execFileAsync(npmExecutable, ['test'], { cwd: root, env }).catch((error) => error);
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
   assert.match(output, /SAFE_FIXTURE_TEST/);
   assert.doesNotMatch(output, /DEMO_EXECUTED_SENTINEL/);
+  assert.doesNotMatch(output, /NESTED_TEST_EXECUTED_SENTINEL/);
   assert.equal(result.code ?? 0, 0, output);
 });
 ```
@@ -82,15 +100,17 @@ Run:
 node --test --test-name-pattern='npm test discovers only repository tests' tests/automation.test.mjs
 ```
 
-Expected: FAIL because the inherited broad `node --test` command discovers the Demo sentinel.
+Expected: FAIL because `scripts/run-tests.mjs` does not exist and the old package command does not satisfy the contract.
 
-- [ ] **Step 3: Scope the root test command**
+- [ ] **Step 3: Add the cross-platform runner and update the package command**
 
-Change `package.json` to:
+Create `scripts/run-tests.mjs` using `readdir(..., { withFileTypes: true })`, keep only top-level regular files ending in `.test.mjs`, sort the exact absolute paths, and spawn:
 
-```json
-"test": "node --test tests/*.test.mjs"
+```js
+spawn(process.execPath, ['--test', ...testFiles], { stdio: 'inherit' })
 ```
+
+Propagate the child exit code, re-emit a terminating signal, and report spawn errors with a nonzero exit. Change `package.json` to `"test": "node scripts/run-tests.mjs"`.
 
 - [ ] **Step 4: Run focused and complete repository tests**
 
@@ -98,15 +118,15 @@ Run:
 
 ```bash
 node --test --test-name-pattern='npm test discovers only repository tests' tests/automation.test.mjs
-node --test tests/*.test.mjs
+npm test
 ```
 
-Expected: PASS; `SAFE_FIXTURE_TEST` runs, `DEMO_EXECUTED_SENTINEL` does not appear, and all repository tests pass.
+Expected: PASS; `SAFE_FIXTURE_TEST` runs, neither sentinel appears, and all repository tests pass on Node.js 20 without shell-glob behavior.
 
 - [ ] **Step 5: Commit the test-discovery change**
 
 ```bash
-git add package.json tests/automation.test.mjs
+git add package.json scripts/run-tests.mjs tests/automation.test.mjs
 git commit -s -m "test: scope node test discovery"
 ```
 
@@ -157,12 +177,25 @@ test('merge queue validates the synthetic group with the existing check contexts
   assert.match(workflow.jobs.dco.steps[0].run, /printf/);
   assert.match(workflow.jobs.dco.steps[0].run, /required pull-request checks, including dco, passed/i);
   assert.doesNotMatch(source, /check-dco/);
+  for (const jobName of ['preview', 'validate']) {
+    const checkout = workflow.jobs[jobName].steps.find((step) => step.name === 'Check out merge-group tree');
+    assert.ok(checkout, `${jobName} must check out the merge-group tree`);
+    assert.equal(checkout.with.ref, '${{ github.event.merge_group.head_sha }}');
+  }
   assert.match(source, /node submission\/scripts\/build-preview\.mjs --root submission --contract-root submission --out-dir artifacts\/preview/);
   assert.match(source, /cookbook-preview-\${{ github\.run_id }}/);
   assert.match(source, /working-directory: submission\n\s+run: npm run check/);
   assert.doesNotMatch(source, /working-directory:\s*submission\/demos|npm\s+--prefix\s+demos|docker\s+build|make\s+(?:-[^\s]+\s+)*demos/i);
 });
 ```
+
+Add a separate authoritative pull-request DCO contract. Parse `dco.yml` and assert that it triggers only for `pull_request` on `main`, has only job ID `dco`, maps `BASE_SHA` and `HEAD_SHA` from the PR payload, checks trusted tooling out at the base SHA, checks submission history out at the head SHA with `fetch-depth: 0`, and runs exactly:
+
+```text
+node trusted/scripts/check-dco.mjs --repo submission --base "$BASE_SHA" --head "$HEAD_SHA"
+```
+
+Reject `--no-merges`. This prevents the queue admission-attestation job from silently replacing the real contributor-commit check.
 
 Include `merge-queue.yml` in the `automationSource` array used by the existing Demo-execution test.
 
@@ -171,7 +204,7 @@ Include `merge-queue.yml` in the `automationSource` array used by the existing D
 Run:
 
 ```bash
-node --test --test-name-pattern='workflows pin|merge queue validates|trusted automation' tests/automation.test.mjs
+node --test --test-name-pattern='workflows pin|merge queue validates|pull-request DCO|trusted automation' tests/automation.test.mjs
 ```
 
 Expected: FAIL because `.github/workflows/merge-queue.yml` does not exist.
@@ -261,10 +294,10 @@ jobs:
 Run:
 
 ```bash
-node --test --test-name-pattern='workflows pin|merge queue validates|trusted automation' tests/automation.test.mjs
+node --test --test-name-pattern='workflows pin|merge queue validates|pull-request DCO|trusted automation' tests/automation.test.mjs
 ```
 
-Expected: PASS, including the exact event, job names, SHA pinning, permissions, artifact naming, and Demo non-execution assertions.
+Expected: PASS, including the exact event, job names, structured `head_sha` checkout values, authoritative PR-DCO data flow and command, SHA pinning, permissions, artifact naming, and Demo non-execution assertions.
 
 - [ ] **Step 5: Run the complete repository check**
 
@@ -275,7 +308,7 @@ git diff --check
 npm run check
 ```
 
-Expected: `npm test` executes exactly `node --test tests/*.test.mjs`; all Node tests pass, the Demo sentinel remains unexecuted, and content, Demo-as-data, links, catalog, and preview checks report zero errors.
+Expected: `npm test` executes `node scripts/run-tests.mjs`; all top-level Node tests pass, Demo and nested sentinels remain unexecuted, and content, Demo-as-data, links, catalog, and preview checks report zero errors.
 
 - [ ] **Step 6: Commit the workflow and tests**
 
@@ -293,7 +326,10 @@ Expected trailer: `Signed-off-by: 安陈 <anchen.qlw@alibaba-inc.com>`.
 - Verify: `docs/superpowers/plans/2026-08-21-merge-queue.md`
 - Verify: `.github/workflows/merge-queue.yml`
 - Verify: `package.json`
+- Verify: `scripts/run-tests.mjs`
 - Verify: `tests/automation.test.mjs`
+- Verify: `docs/maintainers/repository-settings.md`
+- Verify: `docs/automated-checks.md`
 
 **Interfaces:**
 - Consumes: the signed commits and passing `npm run check` from Tasks 1-2.
@@ -335,12 +371,15 @@ Create a temporary PR body containing:
 
 - add dedicated `merge_group` validation with the existing `dco`, `preview`, and `validate` contexts
 - keep pull-request DCO authoritative and use a queue-admission attestation for the merge-group `dco` context
-- scope Node test discovery to repository tests and prove Demo source stays inert
+- use a cross-platform Node test runner and prove Demo and nested test-like files stay inert
+- document the single-Maintainer manual diff-review and queue-admission boundary
 - preserve the existing pull-request trust boundary and Demo-as-data policy
 
 ## Validation
 
 - `npm run check`
+- authoritative PR-DCO and exact merge-group `head_sha` checkout contract tests
+- temporary-repository test-runner fixture
 - real Merge Queue acceptance will run after this PR lands and Ruleset `20582196` is updated
 
 Signed-off-by: 安陈 <anchen.qlw@alibaba-inc.com>
@@ -359,11 +398,13 @@ Expected: a non-draft PR URL.
 Run:
 
 ```bash
-gh pr view --repo QoderAI/cloud-agents-cookbook --json number,state,isDraft,mergeable,mergeStateStatus,files,commits,statusCheckRollup,url
-gh pr checks --repo QoderAI/cloud-agents-cookbook
+gh pr view codex/enable-merge-queue --repo QoderAI/cloud-agents-cookbook --json number,state,isDraft,mergeable,mergeStateStatus,files,commits,statusCheckRollup,url
+gh pr diff codex/enable-merge-queue --repo QoderAI/cloud-agents-cookbook --name-only
+gh pr diff codex/enable-merge-queue --repo QoderAI/cloud-agents-cookbook
+gh pr checks codex/enable-merge-queue --repo QoderAI/cloud-agents-cookbook
 ```
 
-Poll the second command at intervals no shorter than 15 seconds. Expected: `dco`, `preview`, and `validate` all conclude `SUCCESS`; the files are limited to the approved spec, plan, package script, automation test, and merge-queue workflow. `scripts/check-dco.mjs` must remain unchanged.
+Review the complete changed-file list and full diff before considering the PR eligible. Poll the checks command at intervals no shorter than 15 seconds. Expected: `dco`, `preview`, and `validate` all conclude `SUCCESS`; files are limited to the approved workflow, package script, Node test runner, automation test, design/plan, repository-settings, and automated-checks documentation. `scripts/check-dco.mjs` and `.github/workflows/dco.yml` must remain unchanged. Green checks do not replace this diff review.
 
 - [ ] **Step 5: Handle a newly stale infrastructure PR if necessary**
 
@@ -380,7 +421,7 @@ Then wait again for all three PR checks. Do not use GitHub's unqualified force-u
 
 - [ ] **Step 6: Squash-merge the infrastructure PR through the current Ruleset**
 
-Resolve the PR number from the current feature branch and merge that exact PR:
+Resolve the PR number from the current feature branch. Re-run `gh pr diff <PR> --name-only` and review `gh pr diff <PR>` in full, then merge that exact Maintainer-owned infrastructure PR through the current strict Ruleset:
 
 ```bash
 gh pr merge "$(gh pr view codex/enable-merge-queue --repo QoderAI/cloud-agents-cookbook --json number --jq .number)" --repo QoderAI/cloud-agents-cookbook --squash
@@ -415,9 +456,10 @@ Run this read-only command and capture the complete JSON output exactly, without
 
 ```bash
 gh api repos/QoderAI/cloud-agents-cookbook/rulesets/20582196
+gh api repos/QoderAI/cloud-agents-cookbook --jq '{allow_auto_merge,allow_squash_merge,allow_merge_commit,allow_rebase_merge}'
 ```
 
-Save that exact output as `/private/tmp/qca-merge-queue-20260821/ruleset-before.json`. Confirm its `updated_at` before proceeding and stop if its rules differ from the approved design. In particular, verify that `dco` is still one of the required pull-request status contexts and that `bypass_actors` is still empty; the merge-group admission attestation is invalid without those invariants.
+Save the complete Ruleset output as `/private/tmp/qca-merge-queue-20260821/ruleset-before.json`. Confirm its `updated_at` before proceeding and stop if its rules differ from the approved design. In particular, verify that all three contexts (`dco`, `preview`, `validate`) remain required, `bypass_actors` is empty, the review parameters remain `required_approving_review_count=0`, `require_code_owner_review=false`, and `require_last_push_approval=false`, and repository `allow_auto_merge=false`. Also confirm squash is the only enabled repository merge method. The admission-attestation and single-Maintainer manual gate are invalid without these invariants.
 
 - [ ] **Step 2: Create the exact enable payload**
 
@@ -560,11 +602,15 @@ conditions.ref_name.include = ["~DEFAULT_BRANCH"]
 bypass_actors = []
 rule types = deletion, non_fast_forward, required_linear_history, pull_request, merge_queue, required_status_checks
 allowed_merge_methods = ["squash"]
+required_approving_review_count = 0
+require_code_owner_review = false
+require_last_push_approval = false
 required_review_thread_resolution = true
 require_extra_approval_for_unattributed_changes = true
 strict_required_status_checks_policy = false
 required checks = dco, preview, validate
 merge queue = 10 / ALLGREEN / 1 / 1 / SQUASH / 1 / 0
+repository allow_auto_merge = false
 ```
 
 Stop and restore immediately if any field differs.
@@ -583,9 +629,12 @@ Stop and restore immediately if any field differs.
 
 ```bash
 gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json number,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,headRefName,baseRefName,url
+gh pr diff 11 --repo QoderAI/cloud-agents-cookbook --name-only
+gh pr diff 11 --repo QoderAI/cloud-agents-cookbook
+gh api repos/QoderAI/cloud-agents-cookbook --jq .allow_auto_merge
 ```
 
-Expected: `state=OPEN`, `isDraft=false`, `mergeable=MERGEABLE`, base `main`, no unresolved review requirement, and the PR-level `dco`, `preview`, and `validate` conclusions are `SUCCESS`. A `BEHIND` status is acceptable because the Merge Queue now validates the synthetic group.
+Expected: `state=OPEN`, `isDraft=false`, `mergeable=MERGEABLE`, base `main`, no unresolved review requirement, and the PR-level `dco`, `preview`, and `validate` conclusions are `SUCCESS`. Review the complete file list and full diff: PR #11 must contain only the expected content translation under `content/**`; any `.github/**`, `scripts/**`, `tests/**`, package, configuration, Schema, documentation, or otherwise unexpected file is a stop condition. Confirm `allow_auto_merge=false`. A `BEHIND` status is acceptable because the Merge Queue now validates the synthetic group.
 
 - [ ] **Step 2: Submit PR #11 to the queue**
 
@@ -593,7 +642,7 @@ Expected: `state=OPEN`, `isDraft=false`, `mergeable=MERGEABLE`, base `main`, no 
 gh pr merge 11 --repo QoderAI/cloud-agents-cookbook --squash
 ```
 
-Expected: GitHub queues the PR rather than directly merging it.
+This command must be run by the write-access Maintainer only after completing Step 1. Expected: GitHub queues the PR rather than directly merging it. Green checks alone do not authorize the command.
 
 - [ ] **Step 3: Locate and monitor the real merge-group run**
 
@@ -618,9 +667,10 @@ gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json state,mergedAt,mergeCo
 git fetch origin main
 git log origin/main --oneline --decorate --max-count=3
 gh api repos/QoderAI/cloud-agents-cookbook/rulesets/20582196
+gh api repos/QoderAI/cloud-agents-cookbook --jq .allow_auto_merge
 ```
 
-Expected: PR #11 is `MERGED`, `mergedAt` and `mergeCommit` are non-null, `origin/main` contains the queued squash result, and the Ruleset is byte-for-field equivalent to the verified post-update configuration from Task 4.
+Expected: PR #11 is `MERGED`, `mergedAt` and `mergeCommit` are non-null, `origin/main` contains the queued squash result, repository Auto-merge is still disabled, and the Ruleset is byte-for-field equivalent to the verified post-update configuration from Task 4.
 
 - [ ] **Step 5: Roll back on any acceptance failure**
 
