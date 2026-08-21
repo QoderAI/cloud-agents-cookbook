@@ -1,0 +1,32 @@
+{
+  "tasks": [
+    {
+      "custom_id": "migrate-catalog",
+      "project_path": "projects/catalog",
+      "acceptance_command": "python3 -B -m unittest discover -s projects/catalog -p 'test_*.py' -v",
+      "outcome": "automated",
+      "baseline_error": "modern_sdk"
+    },
+    {
+      "custom_id": "migrate-orders",
+      "project_path": "projects/orders",
+      "acceptance_command": "python3 -B -m unittest discover -s projects/orders -p 'test_*.py' -v",
+      "outcome": "automated",
+      "baseline_error": "modern_sdk"
+    },
+    {
+      "custom_id": "migrate-inventory",
+      "project_path": "projects/inventory",
+      "acceptance_command": "python3 -B -m unittest discover -s projects/inventory -p 'test_*.py' -v",
+      "outcome": "automated",
+      "baseline_error": "modern_sdk"
+    },
+    {
+      "custom_id": "migrate-billing",
+      "project_path": "projects/billing",
+      "acceptance_command": "python3 -B projects/billing/check_manual_review.py",
+      "outcome": "manual-review",
+      "baseline_error": "manual-review.md is missing"
+    }
+  ]
+}
