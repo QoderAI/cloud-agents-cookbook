@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -24,7 +24,14 @@ test('DCO check requires a valid Signed-off-by trailer in every commit', () => {
 
 test('merge-group DCO mode excludes only merge commits', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'qca-cookbook-dco-'));
-  const git = (...args) => execFileAsync('git', args, { cwd: root });
+  const hooksPath = path.join(root, 'hooks');
+  await mkdir(hooksPath);
+  const git = (...args) => execFileAsync('git', [
+    '-c', 'commit.gpgSign=false',
+    '-c', 'merge.gpgSign=false',
+    '-c', `core.hooksPath=${hooksPath}`,
+    ...args
+  ], { cwd: root });
   await git('init', '-b', 'main');
   await git('config', 'user.name', 'Example Author');
   await git('config', 'user.email', 'author@example.com');
