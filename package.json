@@ -8,7 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test tests/*.test.mjs",
     "validate": "node scripts/validate.mjs",
     "validate:demos": "node scripts/validate-demos.mjs",
     "build": "node scripts/build-catalog.mjs",

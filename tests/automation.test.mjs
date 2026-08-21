@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import YAML from 'yaml';
-import { checkDcoMessages, commitsInRange } from '../scripts/check-dco.mjs';
+import { checkDcoMessages } from '../scripts/check-dco.mjs';
 import { checkContributionScope } from '../scripts/check-contribution-scope.mjs';
 import { repoRoot } from './helpers.mjs';
 
@@ -20,49 +20,6 @@ test('DCO check requires a valid Signed-off-by trailer in every commit', () => {
     { sha: 'bbb222', message: 'docs: missing trailer' }
   ]);
   assert.deepEqual(result, [{ sha: 'bbb222', message: 'Commit is missing a valid Signed-off-by trailer.' }]);
-});
-
-test('merge-group DCO mode excludes only merge commits', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'qca-cookbook-dco-'));
-  const hooksPath = path.join(root, 'hooks');
-  await mkdir(hooksPath);
-  const git = (...args) => execFileAsync('git', [
-    '-c', 'commit.gpgSign=false',
-    '-c', 'merge.gpgSign=false',
-    '-c', `core.hooksPath=${hooksPath}`,
-    ...args
-  ], { cwd: root });
-  await git('init', '-b', 'main');
-  await git('config', 'user.name', 'Example Author');
-  await git('config', 'user.email', 'author@example.com');
-
-  await writeFile(path.join(root, 'base.txt'), 'base\n');
-  await git('add', 'base.txt');
-  await git('commit', '-m', 'docs: base', '-m', 'Signed-off-by: Example Author <author@example.com>');
-  const { stdout: baseOutput } = await git('rev-parse', 'HEAD');
-  const base = baseOutput.trim();
-
-  await git('checkout', '-b', 'feature');
-  await writeFile(path.join(root, 'feature.txt'), 'feature\n');
-  await git('add', 'feature.txt');
-  await git('commit', '-m', 'docs: unsigned feature');
-  const { stdout: featureOutput } = await git('rev-parse', 'HEAD');
-  const feature = featureOutput.trim();
-
-  await git('checkout', 'main');
-  await writeFile(path.join(root, 'main.txt'), 'main\n');
-  await git('add', 'main.txt');
-  await git('commit', '-m', 'docs: main', '-m', 'Signed-off-by: Example Author <author@example.com>');
-  await git('merge', '--no-ff', 'feature', '-m', 'Merge feature');
-  const { stdout: headOutput } = await git('rev-parse', 'HEAD');
-  const head = headOutput.trim();
-
-  const defaultFailures = checkDcoMessages(await commitsInRange(root, base, head));
-  assert.equal(defaultFailures.length, 2);
-  assert.ok(defaultFailures.some((failure) => failure.sha === feature));
-
-  const queueFailures = checkDcoMessages(await commitsInRange(root, base, head, { excludeMerges: true }));
-  assert.deepEqual(queueFailures, [{ sha: feature, message: 'Commit is missing a valid Signed-off-by trailer.' }]);
 });
 
 test('external content contributions cannot change repository infrastructure', () => {
@@ -109,13 +66,43 @@ test('merge queue validates the synthetic group with the existing check contexts
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   for (const job of Object.values(workflow.jobs)) assert.equal(job.permissions, undefined, 'jobs must not override read-only workflow permissions');
   assert.doesNotMatch(source, /github\.event\.pull_request|pull_request_target|secrets\.|\b(?:actions|checks|contents|deployments|id-token|issues|packages|pages|pull-requests|security-events|statuses):\s*write\b/);
-  assert.match(source, /BASE_SHA: \${{ github\.event\.merge_group\.base_sha }}/);
-  assert.match(source, /HEAD_SHA: \${{ github\.event\.merge_group\.head_sha }}/);
-  assert.match(source, /node trusted\/scripts\/check-dco\.mjs --repo submission --base "\$BASE_SHA" --head "\$HEAD_SHA" --no-merges/);
+  assert.equal(workflow.jobs.dco.steps.length, 1);
+  assert.equal(workflow.jobs.dco.steps[0].uses, undefined);
+  assert.match(workflow.jobs.dco.steps[0].name, /admission/i);
+  assert.match(workflow.jobs.dco.steps[0].run, /printf/);
+  assert.match(workflow.jobs.dco.steps[0].run, /required pull-request checks, including dco, passed/i);
+  assert.doesNotMatch(source, /--no-merges|check-dco/);
   assert.match(source, /node submission\/scripts\/build-preview\.mjs --root submission --contract-root submission --out-dir artifacts\/preview/);
   assert.match(source, /cookbook-preview-\${{ github\.run_id }}/);
   assert.match(source, /working-directory: submission\n\s+run: npm run check/);
   assert.doesNotMatch(source, /working-directory:\s*submission\/demos|npm\s+--prefix\s+demos|docker\s+build|make\s+(?:-[^\s]+\s+)*demos/i);
+});
+
+test('npm test discovers only repository tests and never executes Demo source', async () => {
+  const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
+  const root = await mkdtemp(path.join(tmpdir(), 'qca-cookbook-test-discovery-'));
+  await mkdir(path.join(root, 'tests'), { recursive: true });
+  await mkdir(path.join(root, 'demos', 'example'), { recursive: true });
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({
+    private: true,
+    type: 'module',
+    scripts: { test: packageJson.scripts.test }
+  }));
+  await writeFile(path.join(root, 'tests', 'safe.test.mjs'), `
+    import test from 'node:test';
+    test('SAFE_FIXTURE_TEST', () => {});
+  `);
+  await writeFile(path.join(root, 'demos', 'example', 'test.js'), `
+    throw new Error('DEMO_EXECUTED_SENTINEL');
+  `);
+
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const result = await execFileAsync('npm', ['test'], { cwd: root, env }).catch((error) => error);
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+  assert.match(output, /SAFE_FIXTURE_TEST/);
+  assert.doesNotMatch(output, /DEMO_EXECUTED_SENTINEL/);
+  assert.equal(result.code ?? 0, 0, output);
 });
 
 test('maintainer infrastructure pull requests exercise the proposed tooling', async () => {

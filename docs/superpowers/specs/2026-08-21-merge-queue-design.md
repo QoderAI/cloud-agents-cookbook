@@ -42,11 +42,13 @@ It grants only `contents: read`, uses no repository Secrets, never writes reposi
 
 ### `dco` job
 
-The job checks out trusted tooling from the merge-group base SHA and the merge-group history from the head SHA. It verifies every non-merge commit in `base..head` with the existing DCO trailer rule.
+The existing pull-request `dco` workflow remains the authoritative DCO check and continues verifying every contributor commit before a pull request can become an active queue entry. The merge-group workflow must still report a check context named `dco`, so its `dco` job records that queue-admission invariant instead of treating GitHub's generated queue commit as a contributor commit.
 
-The synthetic commits created by GitHub Merge Queue are merge commits and are excluded only in the merge-group job. The existing PR `dco` job continues checking every commit, including contributor-created merge commits. Therefore an unsigned contributor commit cannot become queue-eligible, while GitHub's unsigned synthetic queue commit does not create a false failure.
+The existing pull-request workflow and `scripts/check-dco.mjs` remain unchanged.
 
-The existing `scripts/check-dco.mjs` receives a narrowly scoped `--no-merges` CLI option, with tests proving that the default PR behavior remains unchanged and the merge-group mode excludes only merge commits.
+This distinction is required for squash queues: GitHub's synthetic queue head may be a single-parent commit without a contributor `Signed-off-by` trailer, so commit topology cannot reliably distinguish it from contributor commits. The admission job is intentionally valid only while `dco` remains a required pull-request check. Ruleset readback must confirm that invariant before enabling the queue and during final acceptance.
+
+The merge-group `dco` job has no checkout, token use, or repository mutation. Its only step prints the admission-attestation message. A static regression test locks it to that single step and rejects any attempt to represent the synthetic queue commit as a DCO-checked contributor commit.
 
 ### `preview` job
 
@@ -56,7 +58,7 @@ Running the repository preview tooling is safe at this stage because an active m
 
 ### `validate` job
 
-The job checks out the merge-group tree, installs dependencies with `npm ci --ignore-scripts`, and runs `npm run check`. This validates the combined tree containing current `main`, all earlier queue entries, and the current entry. It executes repository validation and build tooling but does not install, import, or execute Demo source.
+The job checks out the merge-group tree, installs dependencies with `npm ci --ignore-scripts`, and runs `npm run check`. This validates the combined tree containing current `main`, all earlier queue entries, and the current entry. The root `npm test` command is explicitly scoped to `tests/*.test.mjs`; a Demo sentinel regression proves that `demos/**/test.js` is not discovered or executed.
 
 ## Automated regression checks
 
@@ -65,16 +67,16 @@ Repository tests will statically assert that:
 - the merge-queue workflow listens to `merge_group` and not `pull_request` or `push`;
 - the workflow exposes jobs named `dco`, `preview`, and `validate`;
 - permissions remain read-only and no Secrets or write permissions are referenced;
-- the DCO job uses the trusted base implementation with merge exclusion enabled;
+- the DCO job contains only the approved queue-admission attestation, while the pull-request DCO workflow remains authoritative;
 - preview and validate operate on the merge-group SHA and do not depend on `github.event.pull_request.*`;
-- Demo source is not executed;
-- default DCO behavior still rejects unsigned merge commits, while merge-group mode ignores merge commits and continues rejecting unsigned non-merge commits.
+- Demo source is not executed, including through Node's automatic test discovery;
+- `npm test` runs only `tests/*.test.mjs`, and an allowed `demos/**/test.js` sentinel remains unexecuted.
 
 The complete repository check remains `npm run check`.
 
 ## Infrastructure pull request
 
-All workflow, script, test, and design changes are committed on `codex/enable-merge-queue` with DCO sign-off and submitted as a repository-infrastructure pull request. The PR is merged through the current strict, squash-only process after `dco`, `preview`, and `validate` pass.
+The workflow, package test command, regression tests, and design changes are committed on `codex/enable-merge-queue` with DCO sign-off and submitted as a repository-infrastructure pull request. The PR is merged through the current strict, squash-only process after `dco`, `preview`, and `validate` pass.
 
 ## Ruleset update
 
@@ -99,7 +101,7 @@ Use the already-open PR #11 as the first queue entry after confirming it remains
 Add #11 through `gh pr merge 11 --squash`. Because the Ruleset requires Merge Queue, this command must enqueue the PR instead of directly merging it. Acceptance requires:
 
 - a `merge_group` workflow run is created;
-- `dco`, `preview`, and `validate` run on the merge-group SHA and pass;
+- `dco`, `preview`, and `validate` report for the merge-group run and pass; `preview` and `validate` operate on the merge-group SHA, while `dco` records the admission invariant;
 - #11 is automatically squash-merged by the queue;
 - `main` advances to the queued result;
 - the Ruleset readback remains unchanged after the merge.
@@ -120,5 +122,5 @@ The configuration is complete only when:
 
 1. The infrastructure PR is merged with DCO and all required checks passing.
 2. The active Ruleset contains the exact single-entry squash Merge Queue configuration and no unintended changes.
-3. PR #11 passes all three checks on a real merge-group SHA and is automatically squash-merged.
+3. PR #11 receives all three successful contexts from a real merge-group run and is automatically squash-merged.
 4. The final `main` and Ruleset states are independently read back through GitHub CLI.

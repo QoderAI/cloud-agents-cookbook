@@ -4,7 +4,7 @@
 
 **Goal:** Enable a conservative, squash-only GitHub Merge Queue for `QoderAI/cloud-agents-cookbook`, with real `merge_group` validation and PR #11 as the end-to-end acceptance test.
 
-**Architecture:** Keep the existing `pull_request` workflows unchanged and add one dedicated merge-group workflow that reports the existing `dco`, `preview`, and `validate` check contexts. Extend the DCO helper with an opt-in merge exclusion for GitHub-generated queue commits, then merge the infrastructure PR before atomically updating Ruleset `20582196` through `gh api`.
+**Architecture:** Keep the existing `pull_request` workflows and DCO helper unchanged, and add one dedicated merge-group workflow that reports the existing `dco`, `preview`, and `validate` check contexts. The pull-request `dco` check remains authoritative; the merge-group `dco` job is a single-step queue-admission attestation, while `preview` and `validate` exercise the synthetic merge-group tree. Scope Node test discovery to `tests/*.test.mjs`, then merge the infrastructure PR before atomically updating Ruleset `20582196` through `gh api`.
 
 **Tech Stack:** GitHub Actions, GitHub CLI (`gh`), GitHub Rulesets REST API, Node.js 20, `node:test`, `yaml` 2.9.0, npm.
 
@@ -15,7 +15,9 @@
 - Preserve every existing Ruleset condition, pull-request parameter, protection rule, and the empty bypass list except the addition of `merge_queue` and changing `strict_required_status_checks_policy` from `true` to `false`.
 - All repository commits must include `Signed-off-by: 安陈 <anchen.qlw@alibaba-inc.com>`.
 - Workflows use only SHA-pinned official GitHub Actions, `permissions: contents: read`, bounded timeouts, no Secrets, no write tokens, and no Demo source execution.
-- Existing `pull_request` DCO behavior must continue checking merge commits; only the dedicated `merge_group` job passes `--no-merges`.
+- Existing `pull_request` DCO behavior and `scripts/check-dco.mjs` remain unchanged and continue checking every contributor commit.
+- The pull-request `dco` context must remain required before and after queue enablement; the merge-group job named `dco` only attests that this admission gate passed.
+- The root test command is exactly `node --test tests/*.test.mjs`; a Demo sentinel must prove that `demos/**/test.js` is never discovered or executed.
 - Do not bypass checks, force-push, directly push `main`, or directly merge PR #11.
 - If merge-group validation fails or does not complete within the configured 10-minute response window, restore the original Ruleset before attempting any workflow repair.
 
@@ -23,68 +25,53 @@
 
 ## File Structure
 
-- Modify `scripts/check-dco.mjs`: add an opt-in `excludeMerges` range option and the `--no-merges` CLI flag.
-- Modify `tests/automation.test.mjs`: test real Git histories for DCO behavior and statically enforce merge-queue workflow security/event contracts.
+- Modify `package.json`: scope `npm test` to `node --test tests/*.test.mjs`.
+- Modify `tests/automation.test.mjs`: add the Demo test-discovery sentinel and statically enforce merge-queue workflow security/event/admission contracts.
 - Create `.github/workflows/merge-queue.yml`: run `dco`, `preview`, and `validate` for `merge_group.checks_requested`.
 - Preserve `docs/superpowers/specs/2026-08-21-merge-queue-design.md`: approved design and acceptance contract.
 - Create no persistent repository file for Ruleset payloads; store snapshots and request bodies only under `/private/tmp/qca-merge-queue-20260821/`.
 
-### Task 1: Add opt-in merge exclusion to the DCO range reader
+### Task 1: Scope Node test discovery and prove Demo source stays inert
 
 **Files:**
-- Modify: `tests/automation.test.mjs:3-18`
-- Modify: `scripts/check-dco.mjs:16-30`
+- Modify: `package.json:11`
+- Modify: `tests/automation.test.mjs`
 
 **Interfaces:**
-- Consumes: `checkDcoMessages(commits: Array<{sha: string, message: string}>)`.
-- Produces: `commitsInRange(repo: string, base: string, head: string, options?: {excludeMerges?: boolean}): Promise<Array<{sha: string, message: string}>>` and CLI flag `--no-merges`.
+- Consumes: the root `npm test` script.
+- Produces: deterministic discovery of repository tests under `tests/*.test.mjs`, with no automatic execution of files under `demos/`.
 
-- [ ] **Step 1: Write a failing real-history DCO test**
+- [ ] **Step 1: Write a failing Demo test-discovery sentinel**
 
-Add imports for `execFile`, `mkdtemp`, `tmpdir`, `writeFile`, and `promisify`; import `commitsInRange` beside `checkDcoMessages`. Add this test after the existing DCO unit test:
+Add imports for `execFile`, `mkdir`, `mkdtemp`, `tmpdir`, `writeFile`, and `promisify`, then define `execFileAsync = promisify(execFile)`. Add this test to `tests/automation.test.mjs`:
 
 ```js
-test('merge-group DCO mode excludes only merge commits', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'qca-cookbook-dco-'));
-  const git = (...args) => execFileAsync('git', args, { cwd: root });
-  await git('init', '-b', 'main');
-  await git('config', 'user.name', 'Example Author');
-  await git('config', 'user.email', 'author@example.com');
+test('npm test discovers only repository tests and never executes Demo source', async () => {
+  const packageJson = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
+  const root = await mkdtemp(path.join(tmpdir(), 'qca-cookbook-test-discovery-'));
+  await mkdir(path.join(root, 'tests'), { recursive: true });
+  await mkdir(path.join(root, 'demos', 'example'), { recursive: true });
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({
+    private: true,
+    type: 'module',
+    scripts: { test: packageJson.scripts.test }
+  }));
+  await writeFile(path.join(root, 'tests', 'safe.test.mjs'), `
+    import test from 'node:test';
+    test('SAFE_FIXTURE_TEST', () => {});
+  `);
+  await writeFile(path.join(root, 'demos', 'example', 'test.js'), `
+    throw new Error('DEMO_EXECUTED_SENTINEL');
+  `);
 
-  await writeFile(path.join(root, 'base.txt'), 'base\n');
-  await git('add', 'base.txt');
-  await git('commit', '-m', 'docs: base', '-m', 'Signed-off-by: Example Author <author@example.com>');
-  const { stdout: baseOutput } = await git('rev-parse', 'HEAD');
-  const base = baseOutput.trim();
-
-  await git('checkout', '-b', 'feature');
-  await writeFile(path.join(root, 'feature.txt'), 'feature\n');
-  await git('add', 'feature.txt');
-  await git('commit', '-m', 'docs: unsigned feature');
-  const { stdout: featureOutput } = await git('rev-parse', 'HEAD');
-  const feature = featureOutput.trim();
-
-  await git('checkout', 'main');
-  await writeFile(path.join(root, 'main.txt'), 'main\n');
-  await git('add', 'main.txt');
-  await git('commit', '-m', 'docs: main', '-m', 'Signed-off-by: Example Author <author@example.com>');
-  await git('merge', '--no-ff', 'feature', '-m', 'Merge feature');
-  const { stdout: headOutput } = await git('rev-parse', 'HEAD');
-  const head = headOutput.trim();
-
-  const defaultFailures = checkDcoMessages(await commitsInRange(root, base, head));
-  assert.equal(defaultFailures.length, 2);
-  assert.ok(defaultFailures.some((failure) => failure.sha === feature));
-
-  const queueFailures = checkDcoMessages(await commitsInRange(root, base, head, { excludeMerges: true }));
-  assert.deepEqual(queueFailures, [{ sha: feature, message: 'Commit is missing a valid Signed-off-by trailer.' }]);
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
+  const result = await execFileAsync('npm', ['test'], { cwd: root, env }).catch((error) => error);
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+  assert.match(output, /SAFE_FIXTURE_TEST/);
+  assert.doesNotMatch(output, /DEMO_EXECUTED_SENTINEL/);
+  assert.equal(result.code ?? 0, 0, output);
 });
-```
-
-Define once near the imports:
-
-```js
-const execFileAsync = promisify(execFile);
 ```
 
 - [ ] **Step 2: Run the focused test and verify it fails**
@@ -92,61 +79,35 @@ const execFileAsync = promisify(execFile);
 Run:
 
 ```bash
-node --test --test-name-pattern='merge-group DCO mode' tests/automation.test.mjs
+node --test --test-name-pattern='npm test discovers only repository tests' tests/automation.test.mjs
 ```
 
-Expected: FAIL because `commitsInRange` does not yet accept or apply `excludeMerges`.
+Expected: FAIL because the inherited broad `node --test` command discovers the Demo sentinel.
 
-- [ ] **Step 3: Implement the minimal range and CLI option**
+- [ ] **Step 3: Scope the root test command**
 
-Replace `commitsInRange` with:
+Change `package.json` to:
 
-```js
-export async function commitsInRange(repo, base, head, { excludeMerges = false } = {}) {
-  const args = ['log'];
-  if (excludeMerges) args.push('--no-merges');
-  args.push('--format=%H%x1f%B%x1e', `${base}..${head}`);
-  const { stdout } = await execFileAsync('git', args, { cwd: repo, maxBuffer: 10 * 1024 * 1024 });
-  return stdout.split('\x1e').map((record) => record.trim()).filter(Boolean).map((record) => {
-    const separator = record.indexOf('\x1f');
-    return { sha: record.slice(0, separator), message: record.slice(separator + 1) };
-  });
-}
+```json
+"test": "node --test tests/*.test.mjs"
 ```
 
-Change `runCli()` to parse and pass the Boolean option:
-
-```js
-const { values } = parseArgs({
-  options: {
-    repo: { type: 'string', default: process.cwd() },
-    base: { type: 'string' },
-    head: { type: 'string' },
-    'no-merges': { type: 'boolean', default: false }
-  }
-});
-if (!values.base || !values.head) throw new Error('Usage: check-dco.mjs --repo <path> --base <sha> --head <sha> [--no-merges]');
-const failures = checkDcoMessages(await commitsInRange(values.repo, values.base, values.head, { excludeMerges: values['no-merges'] }));
-```
-
-Keep the existing success/failure output and exit-code handling unchanged.
-
-- [ ] **Step 4: Run focused and full automation tests**
+- [ ] **Step 4: Run focused and complete repository tests**
 
 Run:
 
 ```bash
-node --test --test-name-pattern='DCO|merge-group DCO mode' tests/automation.test.mjs
-node --test tests/automation.test.mjs
+node --test --test-name-pattern='npm test discovers only repository tests' tests/automation.test.mjs
+node --test tests/*.test.mjs
 ```
 
-Expected: PASS; the default range reports the unsigned non-merge and unsigned merge commits, while `{ excludeMerges: true }` reports only the unsigned non-merge commit.
+Expected: PASS; `SAFE_FIXTURE_TEST` runs, `DEMO_EXECUTED_SENTINEL` does not appear, and all repository tests pass.
 
-- [ ] **Step 5: Commit the DCO change**
+- [ ] **Step 5: Commit the test-discovery change**
 
 ```bash
-git add scripts/check-dco.mjs tests/automation.test.mjs
-git commit -s -m "feat: support merge-group DCO checks"
+git add package.json tests/automation.test.mjs
+git commit -s -m "test: scope node test discovery"
 ```
 
 Expected trailer: `Signed-off-by: 安陈 <anchen.qlw@alibaba-inc.com>`.
@@ -154,12 +115,12 @@ Expected trailer: `Signed-off-by: 安陈 <anchen.qlw@alibaba-inc.com>`.
 ### Task 2: Add the dedicated merge-group workflow and security contract
 
 **Files:**
-- Modify: `tests/automation.test.mjs:32-99`
+- Modify: `tests/automation.test.mjs`
 - Create: `.github/workflows/merge-queue.yml`
 
 **Interfaces:**
-- Consumes: `scripts/check-dco.mjs --repo <path> --base <sha> --head <sha> --no-merges` from Task 1.
-- Produces: GitHub check contexts named exactly `dco`, `preview`, and `validate` for `merge_group.checks_requested`.
+- Consumes: the existing pull-request `dco` required check as the queue-admission invariant.
+- Produces: GitHub check contexts named exactly `dco`, `preview`, and `validate` for `merge_group.checks_requested`; the merge-group `dco` context is a single-step admission attestation.
 
 - [ ] **Step 1: Write failing workflow-contract assertions**
 
@@ -190,9 +151,12 @@ test('merge queue validates the synthetic group with the existing check contexts
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   for (const job of Object.values(workflow.jobs)) assert.equal(job.permissions, undefined, 'jobs must not override read-only workflow permissions');
   assert.doesNotMatch(source, /github\.event\.pull_request|pull_request_target|secrets\.|\b(?:actions|checks|contents|deployments|id-token|issues|packages|pages|pull-requests|security-events|statuses):\s*write\b/);
-  assert.match(source, /BASE_SHA: \${{ github\.event\.merge_group\.base_sha }}/);
-  assert.match(source, /HEAD_SHA: \${{ github\.event\.merge_group\.head_sha }}/);
-  assert.match(source, /node trusted\/scripts\/check-dco\.mjs --repo submission --base "\$BASE_SHA" --head "\$HEAD_SHA" --no-merges/);
+  assert.equal(workflow.jobs.dco.steps.length, 1);
+  assert.equal(workflow.jobs.dco.steps[0].uses, undefined);
+  assert.match(workflow.jobs.dco.steps[0].name, /admission/i);
+  assert.match(workflow.jobs.dco.steps[0].run, /printf/);
+  assert.match(workflow.jobs.dco.steps[0].run, /required pull-request checks, including dco, passed/i);
+  assert.doesNotMatch(source, /check-dco/);
   assert.match(source, /node submission\/scripts\/build-preview\.mjs --root submission --contract-root submission --out-dir artifacts\/preview/);
   assert.match(source, /cookbook-preview-\${{ github\.run_id }}/);
   assert.match(source, /working-directory: submission\n\s+run: npm run check/);
@@ -234,29 +198,9 @@ jobs:
   dco:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    env:
-      BASE_SHA: ${{ github.event.merge_group.base_sha }}
-      HEAD_SHA: ${{ github.event.merge_group.head_sha }}
     steps:
-      - name: Check out trusted tooling
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ env.BASE_SHA }}
-          path: trusted
-          persist-credentials: false
-      - name: Check out merge-group history
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: ${{ env.HEAD_SHA }}
-          path: submission
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Use Node.js 20
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 20
-      - name: Check every non-merge commit sign-off
-        run: node trusted/scripts/check-dco.mjs --repo submission --base "$BASE_SHA" --head "$HEAD_SHA" --no-merges
+      - name: Confirm DCO admission gate
+        run: printf '%s\n' 'Required pull-request checks, including DCO, passed before this merge group became active.'
 
   preview:
     runs-on: ubuntu-latest
@@ -331,7 +275,7 @@ git diff --check
 npm run check
 ```
 
-Expected: all Node tests pass; content, Demo-as-data, links, catalog, and preview checks report zero errors.
+Expected: `npm test` executes exactly `node --test tests/*.test.mjs`; all Node tests pass, the Demo sentinel remains unexecuted, and content, Demo-as-data, links, catalog, and preview checks report zero errors.
 
 - [ ] **Step 6: Commit the workflow and tests**
 
@@ -348,7 +292,7 @@ Expected trailer: `Signed-off-by: 安陈 <anchen.qlw@alibaba-inc.com>`.
 - Verify: `docs/superpowers/specs/2026-08-21-merge-queue-design.md`
 - Verify: `docs/superpowers/plans/2026-08-21-merge-queue.md`
 - Verify: `.github/workflows/merge-queue.yml`
-- Verify: `scripts/check-dco.mjs`
+- Verify: `package.json`
 - Verify: `tests/automation.test.mjs`
 
 **Interfaces:**
@@ -390,7 +334,8 @@ Create a temporary PR body containing:
 ## Summary
 
 - add dedicated `merge_group` validation with the existing `dco`, `preview`, and `validate` contexts
-- ignore only GitHub-generated merge commits in merge-group DCO checks
+- keep pull-request DCO authoritative and use a queue-admission attestation for the merge-group `dco` context
+- scope Node test discovery to repository tests and prove Demo source stays inert
 - preserve the existing pull-request trust boundary and Demo-as-data policy
 
 ## Validation
@@ -418,7 +363,7 @@ gh pr view --repo QoderAI/cloud-agents-cookbook --json number,state,isDraft,merg
 gh pr checks --repo QoderAI/cloud-agents-cookbook
 ```
 
-Poll the second command at intervals no shorter than 15 seconds. Expected: `dco`, `preview`, and `validate` all conclude `SUCCESS`; the files are limited to the approved spec, plan, DCO script, automation test, and merge-queue workflow.
+Poll the second command at intervals no shorter than 15 seconds. Expected: `dco`, `preview`, and `validate` all conclude `SUCCESS`; the files are limited to the approved spec, plan, package script, automation test, and merge-queue workflow. `scripts/check-dco.mjs` must remain unchanged.
 
 - [ ] **Step 5: Handle a newly stale infrastructure PR if necessary**
 
@@ -472,7 +417,7 @@ Run this read-only command and capture the complete JSON output exactly, without
 gh api repos/QoderAI/cloud-agents-cookbook/rulesets/20582196
 ```
 
-Save that exact output as `/private/tmp/qca-merge-queue-20260821/ruleset-before.json`. Confirm its `updated_at` before proceeding and stop if its rules differ from the approved design.
+Save that exact output as `/private/tmp/qca-merge-queue-20260821/ruleset-before.json`. Confirm its `updated_at` before proceeding and stop if its rules differ from the approved design. In particular, verify that `dco` is still one of the required pull-request status contexts and that `bypass_actors` is still empty; the merge-group admission attestation is invalid without those invariants.
 
 - [ ] **Step 2: Create the exact enable payload**
 
