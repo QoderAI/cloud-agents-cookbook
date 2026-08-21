@@ -57,11 +57,11 @@ dist/                    generated output; never committed
 
 Validation is deterministic and runs locally with `npm run check` and in GitHub Actions for every pull request. A public contribution may change valid article paths and `demos/<slug>/**`; repository infrastructure changes are handled in separate Maintainer pull requests.
 
-For public content pull requests, the workflow checks out trusted tooling from the default branch and treats the contributor tree strictly as input data. It uses read-only permissions, receives no secrets, and does not execute contributor-supplied scripts. Infrastructure changes are restricted to repository owners, organization members, and collaborators; those trusted pull requests additionally install, test, and exercise the proposed tooling, still without secrets or write permissions. Required status checks block merge when validation, tests, DCO, or preview generation fails.
+For public content pull requests, the intended validation path checks out trusted tooling from the default branch and treats content and Demo files as input data. It uses read-only permissions, receives no secrets, and never executes Demo source. A candidate PR can still propose changes to the workflow orchestration that produces status checks, so green checks are not authorization; the SHA-bound manual admission gate prevents an external infrastructure change from entering the queue. Maintainer-owned infrastructure pull requests additionally install, test, and exercise the proposed tooling, still without secrets or write permissions. Required status checks block merge when validation, tests, DCO, or preview generation fails.
 
 Automated checks cover metadata schema, global slug uniqueness, path consistency, taxonomy, article structure, required sections, images, links, Markdown fences, footnotes, Mermaid syntax and safety, unsupported elements, common secret patterns, Demo binding and static safety, configuration references, and deterministic catalog generation. Submitted Demo commands and source are never executed.
 
-Automated checks do not decide factual accuracy, Demo runtime correctness or operational safety, publication value, copyright ownership, customer authorization, or whether a statement describes a public product capability. Maintainers review these areas and Demo source manually and merge approved pull requests.
+Automated checks do not decide factual accuracy, Demo runtime correctness or operational safety, publication value, copyright ownership, customer authorization, or whether a statement describes a public product capability. Maintainers review these areas and Demo source manually. In the current single-Maintainer configuration, Auto-merge is disabled and only a write-access Maintainer may manually queue a change after binding the full file-list and diff review to the PR's immutable `headRefOid`. The head SHA is read again immediately before `gh pr merge --match-head-commit`; any change requires a complete re-review. Green checks are evidence, not queue authorization. After a second Maintainer is available, require approval, Code Owner review, and latest-push approval while retaining the SHA-bound manual infrastructure review.
 
 ## Preview and publication
 
@@ -85,7 +85,7 @@ The final PRD marks launch content as pending. Therefore `content/` initially co
 
 ## Operational safety
 
-- `main` is protected and requires pull requests, required checks, resolved conversations, and maintainer approval.
+- `main` is protected and requires pull requests, required checks, resolved conversations, an empty bypass list, and a conservative single-entry Merge Queue. The present single-Maintainer Ruleset requires zero approvals; admission instead uses the SHA-bound manual gate documented in `docs/maintainers/repository-settings.md`.
 - Fork pull requests receive read-only tokens and no repository secrets.
 - Preview artifacts have short retention and standard GitHub-hosted runners only.
 - Publication secrets are available only to the trusted `push` workflow on `main`.

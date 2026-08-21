@@ -42,11 +42,15 @@ Automated checks do not determine factual correctness, public product status, De
 
 ## Merge Queue admission
 
-Auto-merge must remain disabled. Only a Maintainer with write access may manually add a pull request to the queue, and green checks alone are never sufficient authorization. Before enqueueing, review both outputs in full:
+Auto-merge must remain disabled. Only a Maintainer with write access may manually add a pull request to the queue, and green checks alone are never sufficient authorization. Capture the PR's `headRefOid` before reviewing both outputs in full:
 
 ```bash
+TASK_REVIEWED_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
 gh pr diff <PR> --name-only
 gh pr diff <PR>
+TASK_CURRENT_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+test "$TASK_CURRENT_SHA" = "$TASK_REVIEWED_SHA"
+gh pr merge <PR> --repo QoderAI/cloud-agents-cookbook --match-head-commit "$TASK_REVIEWED_SHA" --squash
 ```
 
-Do not queue an external pull request that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned automation/security infrastructure. Recreate and review that work as a Maintainer-owned infrastructure pull request. The Ruleset keeps zero required approvals only because the repository currently has a single Maintainer; it compensates with an empty bypass list and this explicit manual admission boundary. When a second Maintainer is available, require approval, Code Owner review, and latest-push approval.
+Replace the `TASK_` prefix with a name unique to the operation. Read `headRefOid` again immediately before enqueueing and require strict equality with the reviewed SHA. If the head changes, stop and repeat the complete review; `--match-head-commit` is mandatory. Do not queue an external pull request that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned automation/security infrastructure. Recreate and review that work as a Maintainer-owned infrastructure pull request. The Ruleset keeps zero required approvals only because the repository currently has a single Maintainer; it compensates with an empty bypass list and this explicit manual admission boundary. When a second Maintainer is available, require approval, Code Owner review, and latest-push approval.

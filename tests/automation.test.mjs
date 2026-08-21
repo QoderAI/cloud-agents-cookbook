@@ -153,8 +153,7 @@ test('npm test discovers only repository tests and never executes Demo source', 
 
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
-  const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const result = await execFileAsync(npmExecutable, ['test'], { cwd: root, env }).catch((error) => error);
+  const result = await execFileAsync(process.execPath, [path.join(root, 'scripts', 'run-tests.mjs')], { cwd: root, env }).catch((error) => error);
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
   assert.match(output, /SAFE_FIXTURE_TEST/);
   assert.doesNotMatch(output, /DEMO_EXECUTED_SENTINEL/);

@@ -1,5 +1,7 @@
 # Qoder Cloud Agents Cookbook Public Repository Implementation Plan
 
+> **Historical design note:** This plan records the repository's initial build sequence and is not the source of truth for live GitHub settings. The current single-Maintainer Merge Queue, zero-approval review parameters, SHA-bound manual admission gate, and future second-Maintainer upgrade are defined in `docs/maintainers/repository-settings.md`. If this historical plan conflicts with that document, follow `repository-settings.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build, verify, and publish a production-grade public content-source repository for Qoder Cloud Agents Cookbook.
@@ -20,7 +22,7 @@
 - Mermaid supports only flowchart, sequenceDiagram, and stateDiagram-v2 with no click, external resource, HTML label, or init directive.
 - Content and documentation use CC BY 4.0; executable code uses Apache-2.0; every contributed commit requires DCO sign-off.
 - No fabricated launch article is stored under `content/`; examples belong under `tests/fixtures/`.
-- External pull requests never receive secrets and never execute contributor-supplied code.
+- External pull requests never receive secrets; intended content validation treats contributor content and Demo source as data. Because a candidate can modify check-producing workflow infrastructure, the live SHA-bound manual queue-admission policy in `repository-settings.md` remains authoritative.
 
 ---
 
@@ -146,7 +148,7 @@
 **Interfaces:**
 - Produces: exact remote setup, branch protection, secrets, preview, publication acknowledgement, rollback, and incident procedures.
 
-- [ ] Document required GitHub settings: `main`, pull requests, one approval, CODEOWNERS, resolved conversations, required checks, no force push, no deletion, and Actions budget controls.
+- [ ] Document live GitHub settings in `repository-settings.md`: `main`, pull requests, current single-Maintainer zero-approval parameters, informational CODEOWNERS, resolved conversations, required checks, empty bypass list, conservative Merge Queue, disabled Auto-merge, SHA-bound manual admission, no force push, no deletion, and Actions budget controls. Record the future upgrade to approval, Code Owner review, and latest-push approval after a second Maintainer is available.
 - [ ] Define preview and publish payloads, expected acknowledgement, idempotency key, source commit, checksum, and failure behavior.
 - [ ] Document release rollback by revert and republish, with slug redirects and lifecycle state behavior.
 - [ ] Run the repository link checker and full `npm run check`.

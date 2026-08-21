@@ -28,14 +28,20 @@ The initial CODEOWNER is `@anchenqlw`, but CODEOWNERS is currently routing infor
 
 ## Manual queue admission
 
-Green checks show that the candidate produced the expected contexts; they do not authorize a merge. A pull request can propose changes to the workflows, scripts, and tests that produce those contexts. Before every enqueue operation, the write-access Maintainer must run:
+Green checks show that the candidate produced the expected contexts; they do not authorize a merge. A pull request can propose changes to the workflows, scripts, and tests that produce those contexts. Every admission review is bound to one immutable pull-request head SHA. Use a task-specific variable name when operating on a real PR:
 
 ```bash
+TASK_REVIEWED_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
 gh pr diff <PR> --name-only
 gh pr diff <PR>
+TASK_CURRENT_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+test "$TASK_CURRENT_SHA" = "$TASK_REVIEWED_SHA"
+gh pr merge <PR> --repo QoderAI/cloud-agents-cookbook --match-head-commit "$TASK_REVIEWED_SHA" --squash
 ```
 
-Review the complete file list and full diff, confirm the change is expected, and only then use the queue command. Do not queue an external pull request that changes `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned repository automation/security infrastructure. Recreate such work on a Maintainer-owned branch and submit it as a separate infrastructure pull request.
+Replace the `TASK_` prefix with a name unique to the operation, such as `INFRA_` or `PR11_`. Capture the reviewed SHA before inspecting the complete file list and full diff. Immediately before the queue command, read `headRefOid` again and require strict equality. If it changed for any reason, stop and restart the review against the new SHA. `--match-head-commit` is mandatory and prevents the enqueue operation from racing with a later push.
+
+Do not queue an external pull request that changes `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned repository automation/security infrastructure. Recreate such work on a Maintainer-owned branch and submit it as a separate infrastructure pull request.
 
 The first queue acceptance case, PR #11, must contain only the expected content translation under `content/**`. Any other path is a stop condition, even if all checks are green.
 

@@ -17,7 +17,7 @@
 - Workflows use only SHA-pinned official GitHub Actions, `permissions: contents: read`, bounded timeouts, no Secrets, no write tokens, and no Demo source execution.
 - Existing `pull_request` DCO behavior and `scripts/check-dco.mjs` remain unchanged and continue checking every contributor commit.
 - The pull-request `dco` context must remain required before and after queue enablement; the merge-group job named `dco` only attests that this admission gate passed.
-- Auto-merge remains disabled. Green checks are not authorization; only a Maintainer with write access may manually queue a PR after running `gh pr diff <PR> --name-only` and reviewing `gh pr diff <PR>` in full.
+- Auto-merge remains disabled. Green checks are not authorization; only a Maintainer with write access may manually queue a PR after capturing its `headRefOid`, reviewing `gh pr diff <PR> --name-only` and `gh pr diff <PR>` in full, re-reading the head with strict equality, and using `--match-head-commit` for that reviewed SHA. Any head change requires a complete re-review.
 - Never queue an external PR that changes `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned automation/security infrastructure. Recreate it as a Maintainer-owned infrastructure PR.
 - Preserve the approved single-maintainer Ruleset review parameters: zero required approvals, no required Code Owner review, and no last-push approval. Preserve the empty bypass list.
 - The root test command is exactly `node scripts/run-tests.mjs`; the runner enumerates sorted, top-level `tests/*.test.mjs` paths without a shell glob. Demo and nested sentinels must remain unexecuted.
@@ -82,8 +82,7 @@ test('npm test discovers only repository tests and never executes Demo source', 
 
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
-  const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const result = await execFileAsync(npmExecutable, ['test'], { cwd: root, env }).catch((error) => error);
+  const result = await execFileAsync(process.execPath, [path.join(root, 'scripts', 'run-tests.mjs')], { cwd: root, env }).catch((error) => error);
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
   assert.match(output, /SAFE_FIXTURE_TEST/);
   assert.doesNotMatch(output, /DEMO_EXECUTED_SENTINEL/);
@@ -372,7 +371,7 @@ Create a temporary PR body containing:
 - add dedicated `merge_group` validation with the existing `dco`, `preview`, and `validate` contexts
 - keep pull-request DCO authoritative and use a queue-admission attestation for the merge-group `dco` context
 - use a cross-platform Node test runner and prove Demo and nested test-like files stay inert
-- document the single-Maintainer manual diff-review and queue-admission boundary
+- document the single-Maintainer SHA-bound diff-review and queue-admission boundary
 - preserve the existing pull-request trust boundary and Demo-as-data policy
 
 ## Validation
@@ -380,6 +379,7 @@ Create a temporary PR body containing:
 - `npm run check`
 - authoritative PR-DCO and exact merge-group `head_sha` checkout contract tests
 - temporary-repository test-runner fixture
+- infrastructure and content queue admission bound to reviewed `headRefOid` with `--match-head-commit`
 - real Merge Queue acceptance will run after this PR lands and Ruleset `20582196` is updated
 
 Signed-off-by: 安陈 <anchen.qlw@alibaba-inc.com>
@@ -395,16 +395,18 @@ Expected: a non-draft PR URL.
 
 - [ ] **Step 4: Verify the PR diff and checks**
 
-Run:
+Resolve the infrastructure PR number and capture its immutable head before reviewing:
 
 ```bash
-gh pr view codex/enable-merge-queue --repo QoderAI/cloud-agents-cookbook --json number,state,isDraft,mergeable,mergeStateStatus,files,commits,statusCheckRollup,url
-gh pr diff codex/enable-merge-queue --repo QoderAI/cloud-agents-cookbook --name-only
-gh pr diff codex/enable-merge-queue --repo QoderAI/cloud-agents-cookbook
-gh pr checks codex/enable-merge-queue --repo QoderAI/cloud-agents-cookbook
+INFRA_PR_NUMBER="$(gh pr view codex/enable-merge-queue --repo QoderAI/cloud-agents-cookbook --json number --jq .number)"
+INFRA_REVIEWED_SHA="$(gh pr view "$INFRA_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+gh pr view "$INFRA_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json number,state,isDraft,mergeable,mergeStateStatus,headRefOid,files,commits,statusCheckRollup,url
+gh pr diff "$INFRA_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --name-only
+gh pr diff "$INFRA_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook
+gh pr checks "$INFRA_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook
 ```
 
-Review the complete changed-file list and full diff before considering the PR eligible. Poll the checks command at intervals no shorter than 15 seconds. Expected: `dco`, `preview`, and `validate` all conclude `SUCCESS`; files are limited to the approved workflow, package script, Node test runner, automation test, design/plan, repository-settings, and automated-checks documentation. `scripts/check-dco.mjs` and `.github/workflows/dco.yml` must remain unchanged. Green checks do not replace this diff review.
+Review the complete changed-file list and full diff for `INFRA_REVIEWED_SHA` before considering the PR eligible. Poll the checks command at intervals no shorter than 15 seconds. Expected: `dco`, `preview`, and `validate` all conclude `SUCCESS`; files are limited to the approved workflow, package script, Node test runner, automation test, design/plan, governance, repository-design, implementation-plan, repository-settings, and automated-checks documentation. `scripts/check-dco.mjs` and `.github/workflows/dco.yml` must remain unchanged. Green checks do not replace this SHA-bound diff review.
 
 - [ ] **Step 5: Handle a newly stale infrastructure PR if necessary**
 
@@ -417,17 +419,19 @@ npm run check
 git push origin codex/enable-merge-queue
 ```
 
-Then wait again for all three PR checks. Do not use GitHub's unqualified force-update or bypass options.
+Then wait again for all three PR checks. The merge commit changes `headRefOid`, so discard `INFRA_REVIEWED_SHA` and repeat Step 4 from the capture before any merge attempt. Do not use GitHub's unqualified force-update or bypass options.
 
 - [ ] **Step 6: Squash-merge the infrastructure PR through the current Ruleset**
 
-Resolve the PR number from the current feature branch. Re-run `gh pr diff <PR> --name-only` and review `gh pr diff <PR>` in full, then merge that exact Maintainer-owned infrastructure PR through the current strict Ruleset:
+Immediately before merging, re-read the infrastructure head and require it to equal the SHA reviewed in Step 4. Merge that exact Maintainer-owned infrastructure PR through the current strict Ruleset with the server-side head guard:
 
 ```bash
-gh pr merge "$(gh pr view codex/enable-merge-queue --repo QoderAI/cloud-agents-cookbook --json number --jq .number)" --repo QoderAI/cloud-agents-cookbook --squash
+INFRA_CURRENT_SHA="$(gh pr view "$INFRA_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+test "$INFRA_CURRENT_SHA" = "$INFRA_REVIEWED_SHA"
+gh pr merge "$INFRA_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --match-head-commit "$INFRA_REVIEWED_SHA" --squash
 ```
 
-Expected: the branch lookup returns the newly created infrastructure PR and it merges without bypass after all required checks pass. Never reuse a historical PR number.
+Expected: strict equality succeeds and GitHub merges the reviewed head without bypass after all required checks pass. If equality or `--match-head-commit` fails, stop and repeat Step 4 against the new head. Never reuse a historical PR number or a reviewed SHA from another task.
 
 - [ ] **Step 7: Verify the workflow is on `main`**
 
@@ -620,6 +624,8 @@ Stop and restore immediately if any field differs.
 **Files:**
 - Read only: `/private/tmp/qca-merge-queue-20260821/ruleset-before.json`
 - Read only: `/private/tmp/qca-merge-queue-20260821/ruleset-restore.json`
+- Create outside repository on rollback: `/private/tmp/qca-merge-queue-20260821/pr11-queue-before-rollback.json`
+- Create outside repository on rollback: `/private/tmp/qca-merge-queue-20260821/pr11-queue-after-dequeue.json`
 
 **Interfaces:**
 - Consumes: the active Merge Queue Ruleset and merged workflow.
@@ -628,37 +634,45 @@ Stop and restore immediately if any field differs.
 - [ ] **Step 1: Revalidate PR #11 immediately before enqueueing**
 
 ```bash
-gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json number,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,headRefName,baseRefName,url
+PR11_REVIEWED_SHA="$(gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json number,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,headRefName,headRefOid,baseRefName,url
 gh pr diff 11 --repo QoderAI/cloud-agents-cookbook --name-only
 gh pr diff 11 --repo QoderAI/cloud-agents-cookbook
 gh api repos/QoderAI/cloud-agents-cookbook --jq .allow_auto_merge
 ```
 
-Expected: `state=OPEN`, `isDraft=false`, `mergeable=MERGEABLE`, base `main`, no unresolved review requirement, and the PR-level `dco`, `preview`, and `validate` conclusions are `SUCCESS`. Review the complete file list and full diff: PR #11 must contain only the expected content translation under `content/**`; any `.github/**`, `scripts/**`, `tests/**`, package, configuration, Schema, documentation, or otherwise unexpected file is a stop condition. Confirm `allow_auto_merge=false`. A `BEHIND` status is acceptable because the Merge Queue now validates the synthetic group.
+Expected: `state=OPEN`, `isDraft=false`, `mergeable=MERGEABLE`, base `main`, no unresolved review requirement, and the PR-level `dco`, `preview`, and `validate` conclusions are `SUCCESS`. Review the complete file list and full diff for `PR11_REVIEWED_SHA`: PR #11 must contain only the expected content translation under `content/**`; any `.github/**`, `scripts/**`, `tests/**`, package, configuration, Schema, documentation, or otherwise unexpected file is a stop condition. Confirm `allow_auto_merge=false`. A `BEHIND` status is acceptable because the Merge Queue now validates the synthetic group.
 
 - [ ] **Step 2: Submit PR #11 to the queue**
 
 ```bash
-gh pr merge 11 --repo QoderAI/cloud-agents-cookbook --squash
+PR11_CURRENT_SHA="$(gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+test "$PR11_CURRENT_SHA" = "$PR11_REVIEWED_SHA"
+PR11_ENQUEUE_UTC="$(node -e 'process.stdout.write(new Date().toISOString())')"
+gh pr merge 11 --repo QoderAI/cloud-agents-cookbook --match-head-commit "$PR11_REVIEWED_SHA" --squash
 ```
 
-This command must be run by the write-access Maintainer only after completing Step 1. Expected: GitHub queues the PR rather than directly merging it. Green checks alone do not authorize the command.
+This command must be run by the write-access Maintainer only after completing Step 1. The head read occurs immediately before enqueueing and must match exactly; if it differs or `--match-head-commit` rejects it, stop and repeat Step 1 against the new head. Expected: GitHub queues the reviewed PR rather than directly merging it. Green checks alone do not authorize the command.
 
 - [ ] **Step 3: Locate and monitor the real merge-group run**
 
 Poll no more frequently than every 15 seconds:
 
 ```bash
-gh run list --repo QoderAI/cloud-agents-cookbook --workflow merge-queue.yml --event merge_group --limit 5 --json databaseId,status,conclusion,headSha,event,createdAt,url
+gh run list --repo QoderAI/cloud-agents-cookbook --workflow merge-queue.yml --event merge_group --limit 10 --json databaseId,status,conclusion,headBranch,headSha,event,createdAt,url
 ```
 
-After a newly created run appears, resolve the newest merge-queue run ID directly and poll it:
+Accept only a run whose `createdAt` is strictly later than `PR11_ENQUEUE_UTC` and whose `headBranch` starts with `gh-readonly-queue/main/pr-11-`. Resolve that matching run, not merely the newest merge-group run:
 
 ```bash
-gh run view "$(gh run list --repo QoderAI/cloud-agents-cookbook --workflow merge-queue.yml --event merge_group --limit 1 --json databaseId --jq '.[0].databaseId')" --repo QoderAI/cloud-agents-cookbook --json databaseId,status,conclusion,jobs,headSha,event,url
+PR11_QUEUE_RUN_ID="$(gh run list --repo QoderAI/cloud-agents-cookbook --workflow merge-queue.yml --event merge_group --limit 10 --json databaseId,createdAt,headBranch --jq "[.[] | select(.createdAt > \"$PR11_ENQUEUE_UTC\" and ((.headBranch // \"\") | startswith(\"gh-readonly-queue/main/pr-11-\")))][0].databaseId")"
+test -n "$PR11_QUEUE_RUN_ID"
+test "$PR11_QUEUE_RUN_ID" != "null"
+PR11_QUEUE_RUN_JSON="$(gh run view "$PR11_QUEUE_RUN_ID" --repo QoderAI/cloud-agents-cookbook --json databaseId,status,conclusion,jobs,headBranch,headSha,createdAt,event,url)"
+printf '%s\n' "$PR11_QUEUE_RUN_JSON"
 ```
 
-Expected within the configured 10-minute response window: event `merge_group`; jobs `dco`, `preview`, and `validate`; all three conclude `success`. Confirm the run `createdAt` is later than the enqueue action before treating it as acceptance evidence.
+Expected within the configured 10-minute response window: event `merge_group`; `createdAt > PR11_ENQUEUE_UTC`; `headBranch` matches `gh-readonly-queue/main/pr-11-...`; jobs `dco`, `preview`, and `validate`; all three conclude `success`. Record `PR11_QUEUE_RUN_ID`, `headBranch`, and `headSha` as acceptance evidence. A run for another queue entry must never satisfy PR #11 acceptance.
 
 - [ ] **Step 4: Verify automatic squash merge and final state**
 
@@ -674,15 +688,44 @@ Expected: PR #11 is `MERGED`, `mergedAt` and `mergeCommit` are non-null, `origin
 
 - [ ] **Step 5: Roll back on any acceptance failure**
 
-If the merge-group run does not appear, remains incomplete beyond 10 minutes, or any required job fails, do not bypass or directly merge PR #11. Run once:
+If the merge-group run does not appear, remains incomplete beyond 10 minutes, or any required job fails, do not bypass or directly merge PR #11. Dequeue it before changing the Ruleset. Query the exact PR node and queue entry:
+
+```bash
+PR11_NODE_ID="$(gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json id --jq .id)"
+gh api graphql \
+  -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { id number state mergeQueueEntry { position } } } }' \
+  -F id="$PR11_NODE_ID" \
+  > /private/tmp/qca-merge-queue-20260821/pr11-queue-before-rollback.json
+jq '.data.node | {id, number, state, mergeQueueEntry}' /private/tmp/qca-merge-queue-20260821/pr11-queue-before-rollback.json
+```
+
+If `mergeQueueEntry` is non-null, call the official dequeue mutation exactly once:
+
+```bash
+gh api graphql \
+  -f query='mutation($id: ID!) { dequeuePullRequest(input: {pullRequestId: $id}) { clientMutationId } }' \
+  -F id="$PR11_NODE_ID"
+```
+
+If the mutation fails, stop and do not change the Ruleset. After a successful mutation, or when the first query showed no entry, query again and prove the PR is still open and no longer queued:
+
+```bash
+gh api graphql \
+  -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { id number state mergeQueueEntry { position } } } }' \
+  -F id="$PR11_NODE_ID" \
+  > /private/tmp/qca-merge-queue-20260821/pr11-queue-after-dequeue.json
+jq -e '.data.node.state == "OPEN" and .data.node.mergeQueueEntry == null' /private/tmp/qca-merge-queue-20260821/pr11-queue-after-dequeue.json
+```
+
+Only if that assertion succeeds may the Ruleset be restored:
 
 ```bash
 gh api --method PUT repos/QoderAI/cloud-agents-cookbook/rulesets/20582196 --input /private/tmp/qca-merge-queue-20260821/ruleset-restore.json
 gh api repos/QoderAI/cloud-agents-cookbook/rulesets/20582196
 ```
 
-Expected: no `merge_queue` rule, `strict_required_status_checks_policy=true`, required checks still exactly `dco`, `preview`, and `validate`, and every other rule unchanged. Report the failed run URL and leave the merged workflow inert on `main` for a follow-up repair PR.
+Expected: PR #11 remains `OPEN` with `mergeQueueEntry=null`; the restored Ruleset has no `merge_queue` rule, `strict_required_status_checks_policy=true`, required checks still exactly `dco`, `preview`, and `validate`, and every other rule unchanged. If either dequeue proof fails, leave the queue Ruleset unchanged and report the blocking state. Otherwise report the failed run URL and leave the merged workflow inert on `main` for a follow-up repair PR.
 
 - [ ] **Step 6: Report completion evidence**
 
-Report the infrastructure PR URL and merge SHA, real merge-group Actions run URL and three job conclusions, PR #11 merge SHA, final `origin/main` SHA, Ruleset ID and exact queue parameters, and whether rollback was needed.
+Report the infrastructure PR URL, reviewed head SHA, and merge SHA; PR #11's reviewed head SHA and enqueue UTC time; the accepted merge-group run ID, URL, `headBranch`, `headSha`, and three job conclusions; PR #11 merge SHA; final `origin/main` SHA; Ruleset ID and exact queue parameters; and whether rollback/dequeue was needed.

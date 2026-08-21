@@ -42,7 +42,7 @@ on:
 
 It grants only `contents: read`, uses no repository Secrets, never writes repository state, and never executes Demo source. A PR may be marked "Merge when ready" while its pull-request checks are still running, but it becomes an active, buildable queue entry only after satisfying the existing branch requirements.
 
-Green checks are not authorization to publish or enqueue a change. A pull request can propose changes to the workflows and tests that produce those checks, so this single-maintainer configuration relies on a separate human admission boundary: Auto-merge remains disabled, and only a Maintainer with write access may manually add a PR to the queue after reviewing both its complete changed-file list and full diff. Before enqueueing, the Maintainer runs `gh pr diff <PR> --name-only` and `gh pr diff <PR>`. An external PR that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned repository automation/security infrastructure is not admitted to the queue. Such a change must be rebuilt as a Maintainer-owned infrastructure PR and reviewed separately.
+Green checks are not authorization to publish or enqueue a change. A pull request can propose changes to the workflows and tests that produce those checks, so this single-maintainer configuration relies on a separate human admission boundary: Auto-merge remains disabled, and only a Maintainer with write access may manually add a PR to the queue. The Maintainer captures `headRefOid` in a task-specific reviewed-SHA variable before reviewing the complete `gh pr diff <PR> --name-only` output and full `gh pr diff <PR>`, reads the head again immediately before enqueueing, and requires strict equality. The queue command includes `--match-head-commit "$TASK_REVIEWED_SHA"`; any head change invalidates the review and requires a complete re-review. An external PR that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned repository automation/security infrastructure is not admitted to the queue. Such a change must be rebuilt as a Maintainer-owned infrastructure PR and reviewed separately.
 
 ### `dco` job
 
@@ -80,7 +80,7 @@ The complete repository check remains `npm run check`.
 
 ## Infrastructure pull request
 
-The workflow, package test command, regression tests, and design changes are committed on `codex/enable-merge-queue` with DCO sign-off and submitted as a repository-infrastructure pull request. The PR is merged through the current strict, squash-only process after `dco`, `preview`, and `validate` pass.
+The workflow, package test command, regression tests, and design changes are committed on `codex/enable-merge-queue` with DCO sign-off and submitted as a repository-infrastructure pull request. Before merging, capture that PR's head as `INFRA_REVIEWED_SHA`, inspect its complete changed-file list and full diff, then re-read the head and require equality. Merge through the current strict, squash-only process with `--match-head-commit "$INFRA_REVIEWED_SHA"` only after `dco`, `preview`, and `validate` pass. Any intervening push requires a new review.
 
 ## Ruleset update
 
@@ -102,12 +102,13 @@ Immediately before mutation, also read back repository settings and stop unless 
 
 ## Live acceptance test
 
-Use the already-open PR #11 as the first queue entry after confirming it remains open, mergeable, has no unresolved review requirement, and has passing PR checks. Before enqueueing, a Maintainer must inspect `gh pr diff 11 --name-only` and `gh pr diff 11` and confirm the PR contains only the expected content-translation scope under `content/**`, with no workflow, script, test, package, configuration, Schema, or Maintainer-documentation changes.
+Use the already-open PR #11 as the first queue entry after confirming it remains open, mergeable, has no unresolved review requirement, and has passing PR checks. Before reviewing, capture its `headRefOid` as `PR11_REVIEWED_SHA`. Inspect `gh pr diff 11 --name-only` and `gh pr diff 11` and confirm the PR contains only the expected content-translation scope under `content/**`, with no workflow, script, test, package, configuration, Schema, or documentation changes. Re-read the head and stop unless it still equals `PR11_REVIEWED_SHA`.
 
-Add #11 through `gh pr merge 11 --squash`. Because the Ruleset requires Merge Queue, this command must enqueue the PR instead of directly merging it. Acceptance requires:
+Record a UTC enqueue timestamp, then add #11 through `gh pr merge 11 --match-head-commit "$PR11_REVIEWED_SHA" --squash`. Because the Ruleset requires Merge Queue, this command must enqueue the PR instead of directly merging it. Acceptance requires:
 
-- a `merge_group` workflow run is created;
+- a `merge_group` workflow run is created after the recorded enqueue time and its `headBranch` matches `gh-readonly-queue/main/pr-11-...`;
 - `dco`, `preview`, and `validate` report for the merge-group run and pass; `preview` and `validate` operate on the merge-group SHA, while `dco` records the admission invariant;
+- the accepted run ID, queue `headBranch`, and `headSha` are recorded so an unrelated merge-group run cannot satisfy acceptance;
 - #11 is automatically squash-merged by the queue;
 - `main` advances to the queued result;
 - the Ruleset readback remains unchanged after the merge.
@@ -120,7 +121,7 @@ Only a Maintainer with write access performs the queue command. Auto-merge remai
 
 Before changing the Ruleset, write its complete API response and the exact update payload to a temporary local validation directory outside the repository. Do not include tokens or response headers.
 
-If the Ruleset update is rejected, stop without retrying a mutated payload until the error and saved payload are compared. If merge-group checks do not start, remain pending, or fail because of workflow configuration, restore the original Ruleset with `gh api` so normal strict PR merging is available again. Do not bypass checks or merge #11 directly.
+If the Ruleset update is rejected, stop without retrying a mutated payload until the error and saved payload are compared. If merge-group checks do not start, remain pending, or fail because of workflow configuration, first query PR #11's GraphQL `mergeQueueEntry`. If it is non-null, call `dequeuePullRequest`, then query again and require `mergeQueueEntry=null` and PR state `OPEN`. Only after that proof may the original Ruleset be restored with `gh api`. If dequeue fails or the second query does not prove those invariants, stop without changing the Ruleset. Do not bypass checks or merge #11 directly.
 
 The merged infrastructure workflow may remain on `main` after a Ruleset rollback because it is inert unless GitHub dispatches `merge_group`.
 
@@ -131,5 +132,6 @@ The configuration is complete only when:
 1. The infrastructure PR is merged with DCO and all required checks passing.
 2. The active Ruleset contains the exact single-entry squash Merge Queue configuration and no unintended changes.
 3. Repository Auto-merge remains disabled and the empty-bypass, manual Maintainer admission contract is documented and verified.
-4. PR #11 is confirmed to contain only the expected content translation, receives all three successful contexts from a real merge-group run, and is automatically squash-merged.
-5. The final `main` and Ruleset states are independently read back through GitHub CLI.
+4. PR #11's reviewed head remains unchanged through its SHA-bound enqueue, and the accepted run is uniquely tied to PR #11 by enqueue time and `gh-readonly-queue/main/pr-11-...` head branch.
+5. PR #11 is confirmed to contain only the expected content translation, receives all three successful contexts from that recorded merge-group run, and is automatically squash-merged.
+6. The final `main` and Ruleset states are independently read back through GitHub CLI; any failed acceptance dequeues PR #11 before Ruleset rollback.

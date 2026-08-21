@@ -26,7 +26,11 @@ Introducing or removing a Demo requires changing its owner article in the same p
 
 ## Merge and publication
 
-Required checks, one maintainer approval, resolved review conversations, and a successful preview are required before merge. Maintainers merge manually. A merge to `main` is the publication event; there is no later content-import step.
+Required checks, resolved review conversations, and a successful preview are required before merge. While the repository has only one Maintainer, the Ruleset requires zero approvals, no Code Owner review, and no last-push approval because GitHub does not allow an author to approve their own pull request. Auto-merge is disabled and the bypass list is empty.
+
+Only a Maintainer with write access may manually add a PR to Merge Queue. Before doing so, the Maintainer captures `headRefOid` in a task-specific variable, reviews `gh pr diff <PR> --name-only` and the complete `gh pr diff <PR>`, reads `headRefOid` again and requires exact equality, then uses `gh pr merge <PR> --match-head-commit "$TASK_REVIEWED_SHA" --squash`. Any head change invalidates the review and requires a complete re-review. Green checks alone never authorize queue admission. External infrastructure changes are rebuilt as separate Maintainer-owned pull requests.
+
+When a second Maintainer or Maintainer team has write access, upgrade the Ruleset to require at least one approval, Code Owner review, and approval of the latest push. The SHA-bound infrastructure diff review remains required. A merge to `main` is the publication event; there is no later content-import step.
 
 The publication workflow must preserve the last successful version when validation, build, upload, or downstream acknowledgement fails.
 
