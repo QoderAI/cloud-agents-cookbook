@@ -703,7 +703,7 @@ If `mergeQueueEntry` is non-null, call the official dequeue mutation exactly onc
 
 ```bash
 gh api graphql \
-  -f query='mutation($id: ID!) { dequeuePullRequest(input: {pullRequestId: $id}) { clientMutationId } }' \
+  -f query='mutation($id: ID!) { dequeuePullRequest(input: {id: $id}) { clientMutationId } }' \
   -F id="$PR11_NODE_ID"
 ```
 
