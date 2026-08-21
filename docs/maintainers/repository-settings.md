@@ -13,17 +13,37 @@ Apply these settings after creating `QoderAI/cloud-agents-cookbook` and before a
 ## Branch protection for `main`
 
 - Require a pull request before merging.
-- Require at least one approving review.
-- Require review from Code Owners.
 - Dismiss stale approvals after new commits.
 - Require all conversations to be resolved.
-- Require the latest reviewed commit.
-- Require `Validate content / validate`, `DCO / dco`, and `Preview content / preview`.
-- Require branches to be up to date before merging so the required checks always represent the prospective merged tree. Do not enable Merge Queue until the workflows explicitly support the `merge_group` event.
+- Keep required approvals at zero, Code Owner review disabled, and last-push approval disabled while the repository has only one Maintainer. GitHub does not allow an author to approve their own pull request, so enabling these controls now would block Maintainer infrastructure pull requests.
+- Require the `validate`, `dco`, and `preview` status contexts.
+- Enable Merge Queue only while `.github/workflows/merge-queue.yml` handles `merge_group.checks_requested` and reports those same three contexts.
+- Configure the queue for one entry at a time: `ALLGREEN`, squash, one entry to build, one entry to merge, minimum one entry, zero-minute wait, and a ten-minute check-response timeout.
+- Disable strict branch freshness after enabling the queue. The merge group, rather than the contributor branch, is tested against the latest `main`.
+- Keep Auto-merge disabled. Only a Maintainer with write access may manually add a pull request to the queue after completing the admission review below.
 - Block force pushes and branch deletion.
-- Do not allow bypass except for documented emergency recovery.
+- Keep the Ruleset bypass list empty.
 
-The initial CODEOWNER is `@anchenqlw`. Replace it with an organization maintainer team after that GitHub team exists and has write access.
+The initial CODEOWNER is `@anchenqlw`, but CODEOWNERS is currently routing information rather than a required approval gate. After a second Maintainer or organization Maintainer team has write access, require at least one approval, Code Owner review, and approval of the latest push. Re-evaluate whether the manual queue-admission procedure can then be narrowed, but do not weaken the infrastructure diff review.
+
+## Manual queue admission
+
+Green checks show that the candidate produced the expected contexts; they do not authorize a merge. A pull request can propose changes to the workflows, scripts, and tests that produce those contexts. Every admission review is bound to one immutable pull-request head SHA. Use a task-specific variable name when operating on a real PR:
+
+```bash
+TASK_REVIEWED_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+gh pr diff <PR> --name-only
+gh pr diff <PR>
+TASK_CURRENT_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+test "$TASK_CURRENT_SHA" = "$TASK_REVIEWED_SHA"
+gh pr merge <PR> --repo QoderAI/cloud-agents-cookbook --match-head-commit "$TASK_REVIEWED_SHA" --squash
+```
+
+Replace the `TASK_` prefix with a name unique to the operation, such as `INFRA_` or `PR11_`. Capture the reviewed SHA before inspecting the complete file list and full diff. Immediately before the queue command, read `headRefOid` again and require strict equality. If it changed for any reason, stop and restart the review against the new SHA. `--match-head-commit` is mandatory and prevents the enqueue operation from racing with a later push.
+
+Do not queue an external pull request that changes `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned repository automation/security infrastructure. Recreate such work on a Maintainer-owned branch and submit it as a separate infrastructure pull request.
+
+The first queue acceptance case, PR #11, must contain only the expected content translation under `content/**`. Any other path is a stop condition, even if all checks are green.
 
 ## Fork pull-request Actions
 
@@ -53,4 +73,4 @@ Rotate the token through the receiver and GitHub Secrets. Do not store it in con
 
 ## One-time verification
 
-Open a signed test pull request from a public fork. Confirm that no Secrets appear, infrastructure changes are rejected, all three required checks run, the preview Artifact opens, an unsigned commit fails DCO, and a valid content correction can be merged by a Maintainer.
+Open a signed test pull request from a public fork. Confirm that no Secrets appear, all three required checks run, the preview Artifact opens, an unsigned commit fails DCO, Auto-merge remains disabled, only a write-access Maintainer can enqueue, and a valid content correction completes all three `merge_group` checks before being squash-merged. Separately verify that an external infrastructure change is stopped by the manual admission review even if it displays green checks.

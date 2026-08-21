@@ -12,6 +12,8 @@ Automated checks run when a pull request is opened, reopened, or updated. Runnin
 
 Required checks block merge. Maintainers should not bypass a failed check; contract changes require a separate maintainer pull request that updates Schema, docs, templates, validator, and tests together.
 
+When Merge Queue is enabled, `.github/workflows/merge-queue.yml` handles `merge_group.checks_requested` and reports the same `dco`, `preview`, and `validate` contexts for the synthetic group. `preview` and `validate` check out exactly the merge-group head SHA. The pull-request `DCO / dco` job remains the authoritative check of every contributor commit; the merge-group `dco` job is only an admission attestation because GitHub's generated squash candidate is not a contributor commit.
+
 ## Validation families
 
 - `META`: Frontmatter, Schema version, single author, taxonomy, one-to-five tags, stable unique slug, related content, and platform-generated fields.
@@ -28,10 +30,27 @@ An Error blocks merge. A Warning is shown for human review but does not block by
 
 ## Security model
 
-Public and fork pull requests receive a read-only token and no Secrets. The workflow checks out validator code from the base commit into `trusted/`, checks out GitHub's synthetic merge tree into `submission/`, and invokes only code from `trusted/`. Fork-supplied scripts and workflows are never executed, even when the author is an organization member or collaborator.
+Public and fork pull requests receive a read-only token and no Secrets. The validation and preview jobs check out validator code from the base commit into `trusted/`, check out GitHub's synthetic merge tree into `submission/`, and use trusted tooling for ordinary external content validation. Demo files are always treated as data and are never executed.
+
+That data/tooling split does not make a green check an authorization decision. A pull request can propose changes to GitHub Actions workflow orchestration and, for Maintainer-owned repository branches, the proposed validation tooling is deliberately exercised. Therefore the check-producing configuration itself is part of the candidate change and must be reviewed as infrastructure.
 
 Ordinary external pull requests may change only valid article paths under `content/**` and strongly bound source under `demos/<slug>/**`. `demos/README.md`, contracts, templates, configuration, tooling, and workflows remain Maintainer-owned infrastructure. A trusted owner, member, or collaborator may change infrastructure only from a branch in this repository; that no-secret, read-only run additionally executes the complete proposed `npm run check`. All existing content is revalidated against the prospective merged contracts before merge.
 
 Demo dependency manifests, package scripts, Makefiles, Dockerfiles, tests, source, and README commands are never executed. Pull-request automation reads Demo files only as untrusted data using tooling from the trusted base revision.
 
 Automated checks do not determine factual correctness, public product status, Demo runtime behavior, operational safety, copyright ownership, customer authorization, or whether the content should be published. Maintainers review the Demo README and source manually.
+
+## Merge Queue admission
+
+Auto-merge must remain disabled. Only a Maintainer with write access may manually add a pull request to the queue, and green checks alone are never sufficient authorization. Capture the PR's `headRefOid` before reviewing both outputs in full:
+
+```bash
+TASK_REVIEWED_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+gh pr diff <PR> --name-only
+gh pr diff <PR>
+TASK_CURRENT_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+test "$TASK_CURRENT_SHA" = "$TASK_REVIEWED_SHA"
+gh pr merge <PR> --repo QoderAI/cloud-agents-cookbook --match-head-commit "$TASK_REVIEWED_SHA" --squash
+```
+
+Replace the `TASK_` prefix with a name unique to the operation. Read `headRefOid` again immediately before enqueueing and require strict equality with the reviewed SHA. If the head changes, stop and repeat the complete review; `--match-head-commit` is mandatory. Do not queue an external pull request that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned automation/security infrastructure. Recreate and review that work as a Maintainer-owned infrastructure pull request. The Ruleset keeps zero required approvals only because the repository currently has a single Maintainer; it compensates with an empty bypass list and this explicit manual admission boundary. When a second Maintainer is available, require approval, Code Owner review, and latest-push approval.
