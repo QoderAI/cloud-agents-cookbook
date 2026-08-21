@@ -31,15 +31,24 @@ The initial CODEOWNER is `@anchenqlw`, but CODEOWNERS is currently routing infor
 Green checks show that the candidate produced the expected contexts; they do not authorize a merge. A pull request can propose changes to the workflows, scripts, and tests that produce those contexts. Every admission review is bound to one immutable pull-request head SHA. Use a task-specific variable name when operating on a real PR:
 
 ```bash
-TASK_REVIEWED_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
-gh pr diff <PR> --name-only
-gh pr diff <PR>
-TASK_CURRENT_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+TASK_PR_NUMBER=123
+TASK_PR_NODE_ID="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json id --jq .id)"
+TASK_REVIEWED_SHA="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+gh pr diff "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --name-only
+gh pr diff "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook
+TASK_CURRENT_SHA="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
 test "$TASK_CURRENT_SHA" = "$TASK_REVIEWED_SHA"
-gh pr merge <PR> --repo QoderAI/cloud-agents-cookbook --match-head-commit "$TASK_REVIEWED_SHA" --squash
+TASK_ENQUEUE_UTC="$(node -e 'process.stdout.write(new Date().toISOString())')"
+gh api graphql \
+  -f query='mutation($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { enqueuePullRequest(input: {pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid}) { mergeQueueEntry { id position } } }' \
+  -F pullRequestId="$TASK_PR_NODE_ID" \
+  -F expectedHeadOid="$TASK_REVIEWED_SHA"
+gh api graphql \
+  -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeQueueEntry { id position } } } }' \
+  -F id="$TASK_PR_NODE_ID"
 ```
 
-Replace the `TASK_` prefix with a name unique to the operation, such as `INFRA_` or `PR11_`. Capture the reviewed SHA before inspecting the complete file list and full diff. Immediately before the queue command, read `headRefOid` again and require strict equality. If it changed for any reason, stop and restart the review against the new SHA. `--match-head-commit` is mandatory and prevents the enqueue operation from racing with a later push.
+Replace the `TASK_` prefix with a name unique to the operation. Capture the reviewed SHA before inspecting the complete file list and full diff. Immediately before the mutation, read `headRefOid` again and require strict equality. If the local comparison or GraphQL `expectedHeadOid` check fails, the PR remains unqueued: stop and restart the complete review against the new SHA. Successful admission requires the readback to show `state=OPEN`, the same `headRefOid`, and a non-null `mergeQueueEntry`. Do not set `jump`.
 
 Do not queue an external pull request that changes `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned repository automation/security infrastructure. Recreate such work on a Maintainer-owned branch and submit it as a separate infrastructure pull request.
 

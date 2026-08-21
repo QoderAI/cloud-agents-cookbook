@@ -42,7 +42,7 @@ on:
 
 It grants only `contents: read`, uses no repository Secrets, never writes repository state, and never executes Demo source. A PR may be marked "Merge when ready" while its pull-request checks are still running, but it becomes an active, buildable queue entry only after satisfying the existing branch requirements.
 
-Green checks are not authorization to publish or enqueue a change. A pull request can propose changes to the workflows and tests that produce those checks, so this single-maintainer configuration relies on a separate human admission boundary: Auto-merge remains disabled, and only a Maintainer with write access may manually add a PR to the queue. The Maintainer captures `headRefOid` in a task-specific reviewed-SHA variable before reviewing the complete `gh pr diff <PR> --name-only` output and full `gh pr diff <PR>`, reads the head again immediately before enqueueing, and requires strict equality. The queue command includes `--match-head-commit "$TASK_REVIEWED_SHA"`; any head change invalidates the review and requires a complete re-review. An external PR that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned repository automation/security infrastructure is not admitted to the queue. Such a change must be rebuilt as a Maintainer-owned infrastructure PR and reviewed separately.
+Green checks are not authorization to publish or enqueue a change. A pull request can propose changes to the workflows and tests that produce those checks, so this single-maintainer configuration relies on a separate human admission boundary: Auto-merge remains disabled, and only a Maintainer with write access may manually add a PR to the queue. The Maintainer captures the PR node ID and `headRefOid` in task-specific variables before reviewing the complete `gh pr diff <PR> --name-only` output and full `gh pr diff <PR>`, reads the head again immediately before enqueueing, and requires strict equality. Queue admission uses GraphQL `enqueuePullRequest(input: {pullRequestId, expectedHeadOid})` with the reviewed SHA and never sets `jump`. A failed comparison or mutation leaves the PR unqueued and requires complete re-review; success requires readback of `state=OPEN`, the same head SHA, and a non-null `mergeQueueEntry`. An external PR that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned repository automation/security infrastructure is not admitted to the queue. Such a change must be rebuilt as a Maintainer-owned infrastructure PR and reviewed separately.
 
 ### `dco` job
 
@@ -104,7 +104,7 @@ Immediately before mutation, also read back repository settings and stop unless 
 
 Use the already-open PR #11 as the first queue entry after confirming it remains open, mergeable, has no unresolved review requirement, and has passing PR checks. Before reviewing, capture its `headRefOid` as `PR11_REVIEWED_SHA`. Inspect `gh pr diff 11 --name-only` and `gh pr diff 11` and confirm the PR contains only the expected content-translation scope under `content/**`, with no workflow, script, test, package, configuration, Schema, or documentation changes. Re-read the head and stop unless it still equals `PR11_REVIEWED_SHA`.
 
-Record a UTC enqueue timestamp, then add #11 through `gh pr merge 11 --match-head-commit "$PR11_REVIEWED_SHA" --squash`. Because the Ruleset requires Merge Queue, this command must enqueue the PR instead of directly merging it. Acceptance requires:
+Record a UTC enqueue timestamp, then add #11 through GraphQL `enqueuePullRequest` with its node ID and `expectedHeadOid=PR11_REVIEWED_SHA`; do not set `jump`. The live acceptance returned queue entry `MQE_lQDOTx8ed88AAAABAYr3Ss4AA9MRzgKZUfg`. Acceptance requires:
 
 - a `merge_group` workflow run is created after the recorded enqueue time and its `headBranch` matches `gh-readonly-queue/main/pr-11-...`;
 - `dco`, `preview`, and `validate` report for the merge-group run and pass; `preview` and `validate` operate on the merge-group SHA, while `dco` records the admission invariant;
@@ -116,6 +116,8 @@ Record a UTC enqueue timestamp, then add #11 through `gh pr merge 11 --match-hea
 No bypass option or direct push to `main` is allowed during acceptance.
 
 Only a Maintainer with write access performs the queue command. Auto-merge remains disabled; green status checks alone never authorize adding PR #11 or any future PR to the queue.
+
+The live acceptance evidence is: enqueue time `2026-08-21T08:26:25.114Z`, queue entry `MQE_lQDOTx8ed88AAAABAYr3Ss4AA9MRzgKZUfg`, merge-group run `32463212422`, queue head `c5855748f6d11b1be2e8222e3198e7fba98de378`, and final PR #11 state `MERGED`.
 
 ## Failure handling and rollback
 

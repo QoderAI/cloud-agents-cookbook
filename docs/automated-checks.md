@@ -45,12 +45,21 @@ Automated checks do not determine factual correctness, public product status, De
 Auto-merge must remain disabled. Only a Maintainer with write access may manually add a pull request to the queue, and green checks alone are never sufficient authorization. Capture the PR's `headRefOid` before reviewing both outputs in full:
 
 ```bash
-TASK_REVIEWED_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
-gh pr diff <PR> --name-only
-gh pr diff <PR>
-TASK_CURRENT_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+TASK_PR_NUMBER=123
+TASK_PR_NODE_ID="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json id --jq .id)"
+TASK_REVIEWED_SHA="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+gh pr diff "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --name-only
+gh pr diff "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook
+TASK_CURRENT_SHA="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
 test "$TASK_CURRENT_SHA" = "$TASK_REVIEWED_SHA"
-gh pr merge <PR> --repo QoderAI/cloud-agents-cookbook --match-head-commit "$TASK_REVIEWED_SHA" --squash
+TASK_ENQUEUE_UTC="$(node -e 'process.stdout.write(new Date().toISOString())')"
+gh api graphql \
+  -f query='mutation($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { enqueuePullRequest(input: {pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid}) { mergeQueueEntry { id position } } }' \
+  -F pullRequestId="$TASK_PR_NODE_ID" \
+  -F expectedHeadOid="$TASK_REVIEWED_SHA"
+gh api graphql \
+  -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeQueueEntry { id position } } } }' \
+  -F id="$TASK_PR_NODE_ID"
 ```
 
-Replace the `TASK_` prefix with a name unique to the operation. Read `headRefOid` again immediately before enqueueing and require strict equality with the reviewed SHA. If the head changes, stop and repeat the complete review; `--match-head-commit` is mandatory. Do not queue an external pull request that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned automation/security infrastructure. Recreate and review that work as a Maintainer-owned infrastructure pull request. The Ruleset keeps zero required approvals only because the repository currently has a single Maintainer; it compensates with an empty bypass list and this explicit manual admission boundary. When a second Maintainer is available, require approval, Code Owner review, and latest-push approval.
+Replace the `TASK_` prefix with a name unique to the operation. Read `headRefOid` again immediately before enqueueing and require strict equality with the reviewed SHA. If the local comparison or GraphQL `expectedHeadOid` check fails, the PR remains unqueued: stop and repeat the complete review. Successful admission requires the readback to show `state=OPEN`, the same `headRefOid`, and a non-null `mergeQueueEntry`. Never set `jump`. Do not queue an external pull request that touches `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned automation/security infrastructure. Recreate and review that work as a Maintainer-owned infrastructure pull request. The Ruleset keeps zero required approvals only because the repository currently has a single Maintainer; it compensates with an empty bypass list and this explicit manual admission boundary. When a second Maintainer is available, require approval, Code Owner review, and latest-push approval.

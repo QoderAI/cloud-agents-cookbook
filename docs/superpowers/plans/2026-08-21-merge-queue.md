@@ -17,7 +17,7 @@
 - Workflows use only SHA-pinned official GitHub Actions, `permissions: contents: read`, bounded timeouts, no Secrets, no write tokens, and no Demo source execution.
 - Existing `pull_request` DCO behavior and `scripts/check-dco.mjs` remain unchanged and continue checking every contributor commit.
 - The pull-request `dco` context must remain required before and after queue enablement; the merge-group job named `dco` only attests that this admission gate passed.
-- Auto-merge remains disabled. Green checks are not authorization; only a Maintainer with write access may manually queue a PR after capturing its `headRefOid`, reviewing `gh pr diff <PR> --name-only` and `gh pr diff <PR>` in full, re-reading the head with strict equality, and using `--match-head-commit` for that reviewed SHA. Any head change requires a complete re-review.
+- Auto-merge remains disabled. Green checks are not authorization; only a Maintainer with write access may manually queue a PR after capturing its node ID and `headRefOid`, reviewing `gh pr diff <PR> --name-only` and `gh pr diff <PR>` in full, re-reading the head with strict equality, and calling GraphQL `enqueuePullRequest` with that SHA as `expectedHeadOid`. Never set `jump`; any comparison or mutation failure requires complete re-review.
 - Never queue an external PR that changes `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned automation/security infrastructure. Recreate it as a Maintainer-owned infrastructure PR.
 - Preserve the approved single-maintainer Ruleset review parameters: zero required approvals, no required Code Owner review, and no last-push approval. Preserve the empty bypass list.
 - The root test command is exactly `node scripts/run-tests.mjs`; the runner enumerates sorted, top-level `tests/*.test.mjs` paths without a shell glob. Demo and nested sentinels must remain unexecuted.
@@ -379,7 +379,7 @@ Create a temporary PR body containing:
 - `npm run check`
 - authoritative PR-DCO and exact merge-group `head_sha` checkout contract tests
 - temporary-repository test-runner fixture
-- infrastructure and content queue admission bound to reviewed `headRefOid` with `--match-head-commit`
+- queue admission bound to reviewed `headRefOid` through GraphQL `expectedHeadOid`
 - real Merge Queue acceptance will run after this PR lands and Ruleset `20582196` is updated
 
 Signed-off-by: 安陈 <anchen.qlw@alibaba-inc.com>
@@ -635,6 +635,7 @@ Stop and restore immediately if any field differs.
 
 ```bash
 PR11_REVIEWED_SHA="$(gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+PR11_NODE_ID="$(gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json id --jq .id)"
 gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json number,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,headRefName,headRefOid,baseRefName,url
 gh pr diff 11 --repo QoderAI/cloud-agents-cookbook --name-only
 gh pr diff 11 --repo QoderAI/cloud-agents-cookbook
@@ -649,10 +650,16 @@ Expected: `state=OPEN`, `isDraft=false`, `mergeable=MERGEABLE`, base `main`, no 
 PR11_CURRENT_SHA="$(gh pr view 11 --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
 test "$PR11_CURRENT_SHA" = "$PR11_REVIEWED_SHA"
 PR11_ENQUEUE_UTC="$(node -e 'process.stdout.write(new Date().toISOString())')"
-gh pr merge 11 --repo QoderAI/cloud-agents-cookbook --match-head-commit "$PR11_REVIEWED_SHA" --squash
+gh api graphql \
+  -f query='mutation($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { enqueuePullRequest(input: {pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid}) { mergeQueueEntry { id position } } }' \
+  -F pullRequestId="$PR11_NODE_ID" \
+  -F expectedHeadOid="$PR11_REVIEWED_SHA"
+gh api graphql \
+  -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeQueueEntry { id position } } } }' \
+  -F id="$PR11_NODE_ID"
 ```
 
-This command must be run by the write-access Maintainer only after completing Step 1. The head read occurs immediately before enqueueing and must match exactly; if it differs or `--match-head-commit` rejects it, stop and repeat Step 1 against the new head. Expected: GitHub queues the reviewed PR rather than directly merging it. Green checks alone do not authorize the command.
+This mutation must be run by the write-access Maintainer only after completing Step 1. The head read occurs immediately before enqueueing and must match exactly; if the local comparison or GraphQL `expectedHeadOid` check fails, the PR remains unqueued and Step 1 must be repeated against the new head. Never set `jump`. Expected readback: `state=OPEN`, `headRefOid=PR11_REVIEWED_SHA`, and a non-null `mergeQueueEntry`.
 
 - [ ] **Step 3: Locate and monitor the real merge-group run**
 
@@ -673,6 +680,8 @@ printf '%s\n' "$PR11_QUEUE_RUN_JSON"
 ```
 
 Expected within the configured 10-minute response window: event `merge_group`; `createdAt > PR11_ENQUEUE_UTC`; `headBranch` matches `gh-readonly-queue/main/pr-11-...`; jobs `dco`, `preview`, and `validate`; all three conclude `success`. Record `PR11_QUEUE_RUN_ID`, `headBranch`, and `headSha` as acceptance evidence. A run for another queue entry must never satisfy PR #11 acceptance.
+
+The live acceptance recorded `PR11_ENQUEUE_UTC=2026-08-21T08:26:25.114Z`, queue entry `MQE_lQDOTx8ed88AAAABAYr3Ss4AA9MRzgKZUfg`, run `32463212422`, queue head `c5855748f6d11b1be2e8222e3198e7fba98de378`, and final PR #11 state `MERGED`.
 
 - [ ] **Step 4: Verify automatic squash merge and final state**
 
