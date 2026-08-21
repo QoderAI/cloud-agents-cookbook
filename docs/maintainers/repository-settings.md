@@ -31,15 +31,61 @@ The initial CODEOWNER is `@anchenqlw`, but CODEOWNERS is currently routing infor
 Green checks show that the candidate produced the expected contexts; they do not authorize a merge. A pull request can propose changes to the workflows, scripts, and tests that produce those contexts. Every admission review is bound to one immutable pull-request head SHA. Use a task-specific variable name when operating on a real PR:
 
 ```bash
-TASK_REVIEWED_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
-gh pr diff <PR> --name-only
-gh pr diff <PR>
-TASK_CURRENT_SHA="$(gh pr view <PR> --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
-test "$TASK_CURRENT_SHA" = "$TASK_REVIEWED_SHA"
-gh pr merge <PR> --repo QoderAI/cloud-agents-cookbook --match-head-commit "$TASK_REVIEWED_SHA" --squash
+(
+  set -euo pipefail
+  TASK_PR_NUMBER=123
+  TASK_PR_NODE_ID="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json id --jq .id)"
+  TASK_REVIEWED_SHA="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+  gh pr diff "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --name-only
+  gh pr diff "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook
+  TASK_CURRENT_SHA="$(gh pr view "$TASK_PR_NUMBER" --repo QoderAI/cloud-agents-cookbook --json headRefOid --jq .headRefOid)"
+  test "$TASK_CURRENT_SHA" = "$TASK_REVIEWED_SHA"
+  TASK_PRE_READBACK_JSON="$(gh api graphql \
+    -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeQueueEntry { id position } } } }' \
+    -F id="$TASK_PR_NODE_ID")"
+  printf '%s\n' "$TASK_PRE_READBACK_JSON" | jq -e --arg sha "$TASK_REVIEWED_SHA" \
+    '.data.node.state == "OPEN" and .data.node.headRefOid == $sha and .data.node.mergeQueueEntry == null' >/dev/null
+  TASK_ENQUEUE_UTC="$(node -e 'process.stdout.write(new Date().toISOString())')"
+  set +e
+  TASK_ENQUEUE_JSON="$(gh api graphql \
+    -f query='mutation($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) { enqueuePullRequest(input: {pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid}) { mergeQueueEntry { id position } } }' \
+    -F pullRequestId="$TASK_PR_NODE_ID" \
+    -F expectedHeadOid="$TASK_REVIEWED_SHA")"
+  TASK_MUTATION_STATUS=$?
+  set -e
+  TASK_MUTATION_ENTRY_ID="$(printf '%s\n' "$TASK_ENQUEUE_JSON" | jq -er '.data.enqueuePullRequest.mergeQueueEntry.id | select(type == "string" and length > 0)' 2>/dev/null)" || TASK_MUTATION_ENTRY_ID=""
+  if ! TASK_POST_READBACK_JSON="$(gh api graphql \
+    -f query='query($id: ID!) { node(id: $id) { ... on PullRequest { state headRefOid mergeQueueEntry { id position } } } }' \
+    -F id="$TASK_PR_NODE_ID")"; then
+    printf 'post-readback failed; admission state is indeterminate; do not retry blindly\n' >&2
+    exit 1
+  fi
+  printf '%s\n' "$TASK_POST_READBACK_JSON" | jq -c '.data.node | {state, headRefOid, mergeQueueEntry}'
+  if TASK_QUEUE_ENTRY_ID="$(printf '%s\n' "$TASK_POST_READBACK_JSON" | jq -er --arg sha "$TASK_REVIEWED_SHA" \
+    'select(.data.node.state == "OPEN" and .data.node.headRefOid == $sha) | .data.node.mergeQueueEntry.id | select(type == "string" and length > 0)')"; then
+    if [ "$TASK_MUTATION_STATUS" -eq 0 ]; then
+      test -n "$TASK_MUTATION_ENTRY_ID"
+    fi
+    TASK_EXPECTED_ENTRY_ID="$TASK_QUEUE_ENTRY_ID"
+    if [ -n "$TASK_MUTATION_ENTRY_ID" ]; then
+      TASK_EXPECTED_ENTRY_ID="$TASK_MUTATION_ENTRY_ID"
+    fi
+    printf '%s\n' "$TASK_POST_READBACK_JSON" | jq -e --arg sha "$TASK_REVIEWED_SHA" --arg entry "$TASK_EXPECTED_ENTRY_ID" \
+      '.data.node.state == "OPEN" and .data.node.headRefOid == $sha and .data.node.mergeQueueEntry.id == $entry' >/dev/null
+    test "$TASK_QUEUE_ENTRY_ID" = "$TASK_EXPECTED_ENTRY_ID"
+    printf 'mutation_status=%s\nenqueue_time=%s\nqueue_entry=%s\n' "$TASK_MUTATION_STATUS" "$TASK_ENQUEUE_UTC" "$TASK_QUEUE_ENTRY_ID"
+  elif printf '%s\n' "$TASK_POST_READBACK_JSON" | jq -e --arg sha "$TASK_REVIEWED_SHA" \
+    '.data.node.state == "OPEN" and .data.node.headRefOid == $sha and .data.node.mergeQueueEntry == null' >/dev/null; then
+    printf 'confirmed not queued; stop and review before another admission attempt\n' >&2
+    exit 1
+  else
+    printf 'post-readback is indeterminate or the head changed; stop and dequeue if necessary\n' >&2
+    exit 1
+  fi
+)
 ```
 
-Replace the `TASK_` prefix with a name unique to the operation, such as `INFRA_` or `PR11_`. Capture the reviewed SHA before inspecting the complete file list and full diff. Immediately before the queue command, read `headRefOid` again and require strict equality. If it changed for any reason, stop and restart the review against the new SHA. `--match-head-commit` is mandatory and prevents the enqueue operation from racing with a later push.
+Replace the `TASK_` prefix with a name unique to the operation. Before mutation, readback must prove `state=OPEN`, the reviewed head, and no existing queue entry. A mutation transport failure is indeterminate, so the script always performs post-readback and never retries blindly. The PR is admitted only when post-readback returns the same head and a non-empty entry ID; when the mutation response also contains an ID, both IDs must match. The same head with `mergeQueueEntry=null` confirms no admission and stops the workflow. A head mismatch or any other state is indeterminate: stop and dequeue first if necessary. Do not set `jump`.
 
 Do not queue an external pull request that changes `.github/**`, `scripts/**`, `tests/**`, root `package*.json`, `config/**`, `schema/**`, `docs/**`, or other Maintainer-owned repository automation/security infrastructure. Recreate such work on a Maintainer-owned branch and submit it as a separate infrastructure pull request.
 
