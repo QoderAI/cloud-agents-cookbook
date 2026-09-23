@@ -1,8 +1,8 @@
 ---
 schema_version: 1
 slug: integrate-qca-realtime-en
-title: Integrate QCA Realtime into a Web Application
-summary: Add QCA Realtime to a Web application, covering conversation creation, WebSocket connections, audio input and output, task updates, and reconnection.
+title: Integrate QCA Realtime into Your Application
+summary: Add QCA Realtime to your application, covering conversation creation, WebSocket connections, audio input and output, task updates, and reconnection.
 type: recipe
 category: build-deploy
 tags:
@@ -21,7 +21,7 @@ source_url: https://mp.weixin.qq.com/s/xqGxH3dbtGfcgOSx51z8dw
 
 ## Goal and use case
 
-This recipe adds real-time voice to a Web application with an existing Forward Template:
+This recipe adds real-time voice to your application using an existing Forward Template. The example uses a browser and an application server:
 
 - The voice Agent handles conversation and explains results.
 - The task Agent executes tasks using the Template's tools and runtime.
@@ -61,7 +61,7 @@ Before you start:
 
 - Credentials and resources: a PAT or SAT, Identity, and Template in the same environment. Exchange a Service Account Key for an SAT first.
 - Runtime: a Template with tool permissions and a runtime that can complete the target task.
-- Application: a server with WebSocket support, a browser with microphone and Web Audio support, and HTTPS for the deployed page.
+- Example environment: a server with WebSocket support, a browser with microphone and Web Audio support, and HTTPS for the deployed page.
 - Example tools: curl and Node.js. The application server can use any language.
 
 Realtime is in Beta. Model, sandbox, and tool usage is billed under the applicable pricing rules.
