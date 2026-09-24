@@ -1,8 +1,8 @@
 ---
 schema_version: 1
 slug: integrate-qca-realtime
-title: 为 Web 应用接入 QCA Realtime
-summary: 为 Web 应用接入 QCA Realtime，完成会话创建、WebSocket 连接、音频收发、任务反馈及断线恢复。
+title: 为你的应用接入 QCA Realtime
+summary: 为你的应用接入 QCA Realtime，完成会话创建、WebSocket 连接、音频收发、任务反馈及断线恢复。
 type: recipe
 category: build-deploy
 tags:
@@ -18,7 +18,7 @@ source_url: https://mp.weixin.qq.com/s/xqGxH3dbtGfcgOSx51z8dw
 
 ## 目标与适用场景
 
-本文介绍如何为已有 Forward Template 的 Web 应用接入实时语音：
+本文介绍如何基于已有 Forward Template，为你的应用接入实时语音。示例采用浏览器与应用服务端架构：
 
 - 语音 Agent 负责交互与结果讲解。
 - 任务 Agent 使用 Template 的工具和运行环境执行任务。
@@ -58,7 +58,7 @@ sequenceDiagram
 
 - 凭据与资源：同一环境下的 PAT 或 SAT、Identity、Template；Service Account Key 须先换取 SAT。
 - 执行环境：Template 已配置工具权限和运行环境，并能完成目标任务。
-- 应用环境：服务端支持 WebSocket，浏览器支持麦克风和 Web Audio，部署页面使用 HTTPS。
+- 示例环境：服务端支持 WebSocket，浏览器支持麦克风和 Web Audio，部署页面使用 HTTPS。
 - 示例工具：curl 和 Node.js；应用服务端不限语言。
 
 Realtime 处于 Beta。模型、沙箱及工具调用按实际计费规则收费。
