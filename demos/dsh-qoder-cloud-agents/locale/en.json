@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Qoder Cloud Agents cloud mode",
+    "description": "Turn on cloud mode in a new session to run every turn in a Qoder Cloud Agents sandbox, with follow-ups in the same sandbox and changes pushed to a new branch. Also adds a subagent tool for delegating single tasks."
+  }
+}

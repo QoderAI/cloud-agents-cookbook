@@ -1,0 +1,20 @@
+- insert:
+    - id: qoder-cloud-agents
+      name: 'dsh-qoder-cloud-agents'
+    - id: tool-qoder-cloud-agents
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: qoder-cloud-agents
+        toolName: subagent_qoder_cloud_agents
+        maxDepth: provider-managed
+    # 云端模式: a session created with this preset runs every turn on Qoder Cloud.
+    - id: preset-qoder-cloud-agents
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: qoder-cloud-agents
+        name: 云端模式
+        description: 每一轮对话都交给 Qoder Cloud 的云端 Agent 执行，可连续追问；当前目录的 git 仓库会挂载到云端沙箱。
+        order: 50
+        plugins:
+          - id: qoder-cloud-agents-route
+            name: 'dsh-qoder-cloud-agents/cloud-route'

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Qoder Cloud Agents 云端模式",
+    "description": "新会话打开云端模式，任务在 Qoder Cloud Agents 沙箱里执行、可连续追问，改动推送到新分支；也可作为子代理工具委派单个任务。"
+  }
+}
