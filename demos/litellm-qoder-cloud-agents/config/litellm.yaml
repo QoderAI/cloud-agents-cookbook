@@ -1,0 +1,9 @@
+model_list:
+  - model_name: qoder-cloud-agent
+    litellm_params:
+      model: openai/qoder-cloud-agent
+      api_base: os.environ/QODER_GATEWAY_BASE_URL
+      "api_key": os.environ/GATEWAY_API_KEY
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
